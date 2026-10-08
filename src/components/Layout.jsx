@@ -42,7 +42,7 @@ export default function Layout() {
       <aside className="lateral">
         <div className="marca">
           <Marca />
-          <div><strong>Galpão</strong><span>Gestão tradicionalista</span></div>
+          <div><strong>CTG Inteligente</strong><span>Gestão tradicionalista</span></div>
         </div>
         {superadmin && entidades.length > 0 ? (
           <div className="seletor-entidade">
@@ -82,7 +82,7 @@ export default function Layout() {
       <div style={{ minWidth: 0 }}>
         <header className="topo-mobile">
           <button type="button" onClick={() => setAberto(true)} aria-label="Abrir menu"><Icone nome="menu" /></button>
-          <strong>{entidade?.nome || 'Galpão'}</strong>
+          <strong>{entidade?.nome || 'CTG Inteligente'}</strong>
         </header>
         <main className="conteudo">
           {!entidadeId && superadmin && loc.pathname !== '/entidades'

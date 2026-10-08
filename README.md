@@ -1,4 +1,4 @@
-# Galpão — Gestão de CTG
+# CTG Inteligente — Gestão de entidades tradicionalistas
 
 Sistema web para gestão de entidades tradicionalistas (CTGs, piquetes, DTGs): quadro social, mensalidades, contas a pagar e receber, livro caixa, eventos e bailes, invernadas, patrimônio, relatórios em PDF e portal do sócio. Os dados ficam no **Firebase** (Firestore + Authentication) e vários CTGs podem usar a mesma instalação, cada um com seus dados separados.
 
@@ -39,7 +39,7 @@ As permissões são aplicadas **no servidor** pelas regras do Firestore (`firest
 Você precisa do [Node.js](https://nodejs.org) 20 ou mais novo e de uma conta Google.
 
 ### 1. Criar o projeto no Firebase
-1. Acesse <https://console.firebase.google.com> e clique em **Criar projeto** (ex.: `galpao-ctg`). O Google Analytics é opcional.
+1. Acesse <https://console.firebase.google.com> e clique em **Criar projeto** (ex.: `ctg-inteligente`). O Google Analytics é opcional.
 2. Menu **Authentication → Começar → Método de login → E-mail/senha → Ativar**.
 3. Menu **Firestore Database → Criar banco de dados**. Escolha a região `southamerica-east1 (São Paulo)` e o **modo de produção**.
 4. Em **Configurações do projeto (engrenagem) → Seus apps**, clique no ícone **Web `</>`**, dê um nome e registre. Copie os valores do `firebaseConfig`.
@@ -54,9 +54,9 @@ cp .env.example .env          # no Windows: copy .env.example .env
 Abra o `.env` e cole os valores do `firebaseConfig`:
 ```
 VITE_FIREBASE_API_KEY=AIza...
-VITE_FIREBASE_AUTH_DOMAIN=galpao-ctg.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=galpao-ctg
-VITE_FIREBASE_STORAGE_BUCKET=galpao-ctg.appspot.com
+VITE_FIREBASE_AUTH_DOMAIN=ctg-inteligente.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=ctg-inteligente
+VITE_FIREBASE_STORAGE_BUCKET=ctg-inteligente.appspot.com
 VITE_FIREBASE_MESSAGING_SENDER_ID=123456789
 VITE_FIREBASE_APP_ID=1:123456789:web:abc123
 ```
@@ -107,6 +107,7 @@ Para desfazer um recebimento ou pagamento use **Estornar** na tela de origem (Me
 - **Não renomeie contas financeiras** que já têm movimento (o saldo é calculado pelo nome).
 - **Backup:** no console do Google Cloud é possível agendar exportações do Firestore; para algo simples, exporte as planilhas de sócios e os PDFs mensais.
 - Desativar uma entidade em **Entidades** bloqueia o acesso de todos os usuários dela.
+- **Excluir uma entidade** (ex.: cadastro duplicado) apaga de vez os sócios, mensalidades, caixa, eventos, invernadas, patrimônio e os acessos dela. Antes de excluir, o sistema mostra quantos registros ela tem e pede para digitar o nome. Entidades com nome repetido aparecem marcadas na lista. Os logins continuam no Firebase Authentication e podem ser apagados pelo console.
 
 ## Estrutura do código
 

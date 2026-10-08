@@ -14,7 +14,7 @@ export const firebaseConfig = {
 export const configurado = Boolean(firebaseConfig.apiKey && firebaseConfig.projectId);
 const usarEmulador = import.meta.env.VITE_USE_EMULATOR === 'true';
 
-export const app = initializeApp(configurado ? firebaseConfig : { apiKey: 'demo', projectId: 'demo-galpao' });
+export const app = initializeApp(configurado ? firebaseConfig : { apiKey: 'demo', projectId: 'demo-ctg-inteligente' });
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 

@@ -1,6 +1,6 @@
 rules_version = '2';
 
-// Regras de segurança do Galpão — Gestão de CTG.
+// Regras de segurança do CTG Inteligente.
 // Cada entidade guarda seus dados em /entidades/{entidadeId}/... e só quem
 // pertence a ela (ou o administrador do sistema) consegue ler ou gravar.
 // A matriz de papéis é a mesma de src/lib/permissoes.js.

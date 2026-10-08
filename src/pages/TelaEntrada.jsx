@@ -7,7 +7,7 @@ export default function TelaEntrada({ titulo, texto, children }) {
       <section className="entrada-arte">
         <div style={{ display: 'flex', gap: '.75rem', alignItems: 'center' }}>
           <Marca tam={44} />
-          <strong style={{ fontFamily: 'var(--serif)', fontSize: '1.35rem', color: '#fff' }}>Galpão</strong>
+          <strong style={{ fontFamily: 'var(--serif)', fontSize: '1.35rem', color: '#fff' }}>CTG Inteligente</strong>
         </div>
         <div>
           <h1>{titulo}</h1>
