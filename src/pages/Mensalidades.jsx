@@ -61,7 +61,8 @@ export default function Mensalidades() {
     await acao(async () => {
       const lote = novoLote();
       lote.atualizar(entidadeId, 'mensalidades', m.id, { status: 'aberto', dataPagamento: null, formaPagamento: null, conta: null, valorPago: null, caixaId: null });
-      if (m.caixaId) lote.excluir(entidadeId, 'caixa', m.caixaId);
+      if (m.caixaId) lote.excluir(entidadeId, 'caixa', m.caixaId, `Estorno: mensalidade ${fmtCompetencia(m.competencia)} de ${m.socioNome} (${fmtMoeda(m.valorPago ?? m.valor)})`);
+      lote.registrar('estornou', `Mensalidade ${fmtCompetencia(m.competencia)} de ${m.socioNome}`, entidadeId);
       await lote.commit();
     }, 'Pagamento estornado');
   }
@@ -199,7 +200,7 @@ function GerarMensalidades({ compInicial, aoFechar }) {
     }));
     if (!novas.length) { notificar('Todas as mensalidades desse período já estavam geradas.'); return true; }
     if (!window.confirm(`Gerar ${novas.length} mensalidade(s) para ${socios.length} sócio(s) ativo(s), somando ${fmtMoeda(somar(novas))}?`)) return false;
-    await emLotes(novas, (lote, m) => lote.criar(entidadeId, 'mensalidades', m));
+    await emLotes(novas, (lote, m) => lote.criar(entidadeId, 'mensalidades', m), 400, entidadeId, `Mensalidades geradas a partir de ${fmtCompetencia(dados.inicio)}`);
     notificar(`${novas.length} mensalidade(s) gerada(s)`);
     return true;
   }
@@ -245,6 +246,7 @@ export function ReceberMensalidades({ inicial, aoFechar }) {
         });
         pagas.push({ ...m, valorPago, dataPagamento: dados.data, formaPagamento: dados.forma });
       });
+      lote.registrar('recebeu', `${selecionadas.length} mensalidade(s) de ${inicial.socioNome}: ${fmtMoeda(total)} (${dados.forma})`, entidadeId);
       await lote.commit();
     }, selecionadas.length > 1 ? `${selecionadas.length} mensalidades recebidas` : 'Pagamento registrado');
     if (ok && dados.recibo) reciboMensalidades(entidade, null, pagas, perfil?.nome);

@@ -3,6 +3,7 @@ import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/aut
 import { auth } from '../lib/firebase';
 import { Campo, mensagemErro } from '../components/ui';
 import TelaEntrada from './TelaEntrada';
+import { MINUTOS_INATIVIDADE } from '../context/AuthContext';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -10,6 +11,10 @@ export default function Login() {
   const [erro, setErro] = useState('');
   const [aviso, setAviso] = useState('');
   const [enviando, setEnviando] = useState(false);
+  const [verSenha, setVerSenha] = useState(false);
+  const [inativo] = useState(() => {
+    try { const v = sessionStorage.getItem('ctg.inatividade'); sessionStorage.removeItem('ctg.inatividade'); return Boolean(v); } catch { return false; }
+  });
 
   async function entrar(e) {
     e.preventDefault();
@@ -34,15 +39,20 @@ export default function Login() {
     >
       <h2>Entrar</h2>
       <p>Use o e-mail e a senha cadastrados pela diretoria.</p>
+      {inativo && !erro && <div className="aviso info">Por segurança, sua sessão foi encerrada depois de {MINUTOS_INATIVIDADE} minutos sem uso. Entre de novo.</div>}
       {erro && <div className="aviso erro">{erro}</div>}
       {aviso && <div className="aviso info">{aviso}</div>}
       <form onSubmit={entrar}>
         <Campo rotulo="E-mail">
           <input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
         </Campo>
-        <Campo rotulo="Senha">
-          <input type="password" autoComplete="current-password" value={senha} onChange={(e) => setSenha(e.target.value)} required />
-        </Campo>
+        <div className="campo">
+          <label className="campo-rotulo" htmlFor="senha-login">Senha</label>
+          <div className="senha-campo">
+            <input id="senha-login" type={verSenha ? 'text' : 'password'} autoComplete="current-password" value={senha} onChange={(e) => setSenha(e.target.value)} required />
+            <button type="button" onClick={() => setVerSenha(!verSenha)} aria-pressed={verSenha} aria-label={verSenha ? 'Ocultar senha' : 'Mostrar senha'}>{verSenha ? 'Ocultar' : 'Mostrar'}</button>
+          </div>
+        </div>
         <button className="btn btn-primario" style={{ width: '100%', padding: '.75rem' }} disabled={enviando}>
           {enviando ? 'Entrando…' : 'Entrar'}
         </button>

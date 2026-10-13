@@ -2,12 +2,20 @@ import { useState } from 'react';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../lib/firebase';
+import { registrarAtividade } from '../lib/db';
 import { TIPOS_ENTIDADE } from '../lib/constantes';
-import { Cabecalho, Campo, useAcao, useFormulario } from '../components/ui';
+import { Cabecalho, Campo, SeletorImagem, useAcao, useFormulario } from '../components/ui';
+import { prepararLogo } from '../lib/imagens';
 
-export function CamposEntidade({ ligar }) {
+export function CamposEntidade({ ligar, dados, definir }) {
   return (
     <div className="form-grade-3">
+      {definir && (
+        <div className="col-3">
+          <SeletorImagem rotulo="Brasão / logo da entidade" valor={dados?.logo || null} aoMudar={(v) => definir('logo', v)} preparar={prepararLogo}
+            textoVazio="Sem brasão" ajuda="PNG com fundo transparente fica melhor. Aparece no menu, no portal do sócio, na carteirinha, nos recibos e relatórios." />
+        </div>
+      )}
       <Campo rotulo="Nome da entidade" className="col-2"><input {...ligar('nome', { obrigatorio: true })} /></Campo>
       <Campo rotulo="Tipo"><select {...ligar('tipo')}>{TIPOS_ENTIDADE.map((t) => <option key={t}>{t}</option>)}</select></Campo>
       <Campo rotulo="Sigla"><input placeholder="CTG QP" {...ligar('sigla')} /></Campo>
@@ -50,7 +58,7 @@ export default function Configuracoes() {
 function FormConfig({ entidade, config }) {
   const acao = useAcao();
   const [salvando, setSalvando] = useState(false);
-  const { dados, ligar } = useFormulario({
+  const { dados, ligar, definir } = useFormulario({
     nome: '', tipo: 'CTG', sigla: '', cnpj: '', fundacao: '', endereco: '', rt: '', cidade: '', uf: 'RS', telefone: '', email: '', gestao: '',
     ...entidade,
   });
@@ -74,7 +82,7 @@ function FormConfig({ entidade, config }) {
         categoriasSocio: cfg.categoriasSocio.filter((c) => c.nome.trim()).map((c) => ({ nome: c.nome.trim(), valor: Number(c.valor) || 0 })),
       },
       atualizadoEm: serverTimestamp(),
-    }), 'Dados da entidade salvos');
+    }).then(() => registrarAtividade(entidade.id, 'alterou', 'Dados e configurações da entidade').catch(() => {})), 'Dados da entidade salvos');
     setSalvando(false);
   }
 
@@ -84,7 +92,7 @@ function FormConfig({ entidade, config }) {
         <button type="submit" className="btn btn-primario" disabled={salvando}>{salvando ? 'Salvando…' : 'Salvar alterações'}</button>
       </Cabecalho>
 
-      <section className="painel"><div className="painel-titulo"><h2>Cadastro</h2></div><div className="painel-corpo"><CamposEntidade ligar={ligar} /></div></section>
+      <section className="painel"><div className="painel-titulo"><h2>Cadastro</h2></div><div className="painel-corpo"><CamposEntidade ligar={ligar} dados={dados} definir={definir} /></div></section>
       <div className="espaco" />
 
       <section className="painel">

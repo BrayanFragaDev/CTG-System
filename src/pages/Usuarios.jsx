@@ -3,9 +3,9 @@ import { collection, query, where, onSnapshot, doc, setDoc, updateDoc, deleteDoc
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { useAuth } from '../context/AuthContext';
 import { db, auth, criarContaLogin } from '../lib/firebase';
-import { useColecao } from '../lib/db';
+import { useColecao, registrarAtividade } from '../lib/db';
 import { PAPEIS, PAPEIS_ENTIDADE } from '../lib/permissoes';
-import { Cabecalho, Campo, Carregando, ModalForm, Selo, Vazio, useAcao, useFormulario, mensagemErro } from '../components/ui';
+import { AvisoErro, Cabecalho, Campo, Carregando, ModalForm, Selo, Vazio, useAcao, useFormulario, mensagemErro } from '../components/ui';
 import Icone from '../components/Icone';
 
 export default function Usuarios() {
@@ -44,7 +44,7 @@ export default function Usuarios() {
       <Cabecalho titulo="Usuários e acessos" descricao="Quem entra no sistema e o que cada um pode fazer.">
         <button type="button" className="btn btn-primario" onClick={() => setEditando({})}><Icone nome="mais" tam={18} />Novo acesso</button>
       </Cabecalho>
-      {erro && <div className="aviso erro">{mensagemErro(erro)}</div>}
+      <AvisoErro erro={erro} />
       <div className="painel">
         <div className="painel-titulo"><h2>Diretoria e equipe</h2></div>
         {usuarios === null ? <Carregando /> : equipe.length === 0 ? <Vazio titulo="Nenhum membro da diretoria com acesso">Dê acesso ao tesoureiro e ao secretário para dividirem o trabalho.</Vazio> : (
@@ -91,17 +91,28 @@ function FormUsuario({ usuario, aoFechar, acao }) {
       nome: dados.nome.trim(), papel: dados.papel, ativo: Boolean(dados.ativo), entidadeId,
       socioId: ehSocio ? dados.socioId : null, socioNome: ehSocio ? s?.nome || null : null,
     };
-    if (!novo) return acao(() => updateDoc(doc(db, 'usuarios', usuario.id), perfil), 'Acesso atualizado');
+    if (!novo) {
+      return acao(async () => {
+        await updateDoc(doc(db, 'usuarios', usuario.id), perfil);
+        await registrarAtividade(entidadeId, 'alterou acesso', `${perfil.nome} (${usuario.email}): ${PAPEIS[perfil.papel].nome}${perfil.ativo ? '' : ', desativado'}`).catch(() => {});
+      }, 'Acesso atualizado');
+    }
+    const problema = senhaFraca(dados.senha);
+    if (problema) throw new Error(problema);
     return acao(async () => {
       const email = dados.email.trim().toLowerCase();
       const uid = await criarContaLogin(email, dados.senha);
       await setDoc(doc(db, 'usuarios', uid), { ...perfil, email, criadoEm: serverTimestamp() });
+      await registrarAtividade(entidadeId, 'liberou acesso', `${perfil.nome} (${email}) como ${PAPEIS[perfil.papel].nome}`).catch(() => {});
     }, `Acesso criado. Passe a ${dados.email} a senha provisória.`);
   }
 
   async function remover() {
     if (!window.confirm(`Remover o acesso de ${usuario.nome}? A pessoa não conseguirá mais entrar nesta entidade.`)) return;
-    if (await acao(() => deleteDoc(doc(db, 'usuarios', usuario.id)), 'Acesso removido')) aoFechar();
+    if (await acao(async () => {
+      await deleteDoc(doc(db, 'usuarios', usuario.id));
+      await registrarAtividade(entidadeId, 'removeu acesso', `${usuario.nome} (${usuario.email})`).catch(() => {});
+    }, 'Acesso removido')) aoFechar();
   }
 
   return (
@@ -123,10 +134,34 @@ function FormUsuario({ usuario, aoFechar, acao }) {
         <Campo rotulo="Nome" className="col-2"><input {...ligar('nome', { obrigatorio: true })} /></Campo>
         {novo && <>
           <Campo rotulo="E-mail de login"><input type="email" {...ligar('email', { obrigatorio: true })} /></Campo>
-          <Campo rotulo="Senha provisória" ajuda="Mínimo de 6 caracteres. A pessoa pode trocar em “Esqueci a senha”."><input type="text" minLength={6} autoComplete="new-password" {...ligar('senha', { obrigatorio: true })} /></Campo>
+          <div className="campo">
+            <label className="campo-rotulo" htmlFor="senha-prov">Senha provisória</label>
+            <div style={{ display: 'flex', gap: '.5rem' }}>
+              <input id="senha-prov" type="text" minLength={8} autoComplete="new-password" spellCheck={false} {...ligar('senha', { obrigatorio: true })} />
+              <button type="button" className="btn" onClick={() => setDados({ ...dados, senha: gerarSenha() })}>Gerar</button>
+            </div>
+            <span className="ajuda">Pelo menos 8 caracteres, com letras e números. A pessoa troca depois em “Esqueci a senha”.</span>
+          </div>
         </>}
         {!novo && <div className="col-2" style={{ marginBottom: '1rem' }}><label className="checkbox"><input type="checkbox" checked={Boolean(dados.ativo)} onChange={ligar('ativo').onChange} />Acesso ativo</label></div>}
       </div>
     </ModalForm>
   );
+}
+
+export function senhaFraca(senha) {
+  if (!senha || senha.length < 8) return 'A senha provisória precisa ter pelo menos 8 caracteres.';
+  if (!/[a-zA-Z]/.test(senha) || !/[0-9]/.test(senha)) return 'A senha provisória precisa misturar letras e números.';
+  if (/^(12345678|password|senha123|abc12345)/i.test(senha)) return 'Essa senha é fácil demais de adivinhar. Use o botão Gerar.';
+  return null;
+}
+
+// Senha legível (sem 0/O, 1/l) para ditar por telefone
+export function gerarSenha() {
+  const letras = 'abcdefghjkmnpqrstuvwxyz';
+  const numeros = '23456789';
+  const r = new Uint32Array(10);
+  crypto.getRandomValues(r);
+  const pick = (conj, i) => conj[r[i] % conj.length];
+  return `${pick(letras, 0).toUpperCase()}${pick(letras, 1)}${pick(letras, 2)}${pick(letras, 3)}-${pick(numeros, 4)}${pick(numeros, 5)}${pick(numeros, 6)}${pick(numeros, 7)}`;
 }

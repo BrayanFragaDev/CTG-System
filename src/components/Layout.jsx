@@ -5,14 +5,16 @@ import { PAPEIS } from '../lib/permissoes';
 import Icone, { Marca } from './Icone';
 
 const GRUPOS = [
-  { titulo: null, itens: [{ para: '/', rotulo: 'Painel', icone: 'painel', modulo: null }] },
+  { titulo: null, itens: [{ para: '/', rotulo: 'Painel', icone: 'painel', modulo: 'painel' }] },
   { titulo: 'Quadro social', itens: [
     { para: '/socios', rotulo: 'Sócios', icone: 'socios', modulo: 'socios' },
     { para: '/mensalidades', rotulo: 'Mensalidades', icone: 'mensalidades', modulo: 'mensalidades' },
+    { para: '/avisos', rotulo: 'Avisos aos sócios', icone: 'avisos', modulo: 'avisos' },
   ] },
   { titulo: 'Financeiro', itens: [
     { para: '/contas', rotulo: 'Contas a pagar e receber', icone: 'contas', modulo: 'contas' },
     { para: '/caixa', rotulo: 'Caixa', icone: 'caixa', modulo: 'caixa' },
+    { para: '/estoque', rotulo: 'Copa e estoque', icone: 'estoque', modulo: 'estoque' },
     { para: '/relatorios', rotulo: 'Relatórios', icone: 'relatorios', modulo: 'caixa' },
   ] },
   { titulo: 'Cultura e eventos', itens: [
@@ -23,6 +25,7 @@ const GRUPOS = [
   { titulo: 'Administração', itens: [
     { para: '/usuarios', rotulo: 'Usuários e acessos', icone: 'usuarios', modulo: 'usuarios' },
     { para: '/configuracoes', rotulo: 'Dados da entidade', icone: 'config', modulo: 'configuracoes' },
+    { para: '/atividades', rotulo: 'Registro de atividades', icone: 'atividades', modulo: 'auditoria' },
     { para: '/entidades', rotulo: 'Entidades', icone: 'entidades', modulo: 'superadmin' },
   ] },
 ];
@@ -47,14 +50,20 @@ export default function Layout() {
         {superadmin && entidades.length > 0 ? (
           <div className="seletor-entidade">
             <label htmlFor="ent-sel">Entidade</label>
-            <select id="ent-sel" value={entidadeId || ''} onChange={(e) => trocarEntidade(e.target.value)}>
-              {entidades.map((e) => <option key={e.id} value={e.id}>{e.nome}</option>)}
-            </select>
+            <div style={{ display: 'flex', gap: '.6rem', alignItems: 'center' }}>
+              {entidade?.logo && <img className="brasao-lateral" src={entidade.logo} alt={`Brasão de ${entidade.nome}`} />}
+              <select id="ent-sel" value={entidadeId || ''} onChange={(e) => trocarEntidade(e.target.value)}>
+                {entidades.map((e) => <option key={e.id} value={e.id}>{e.nome}</option>)}
+              </select>
+            </div>
           </div>
         ) : entidade && (
           <div className="entidade-nome">
-            <strong>{entidade.nome}</strong>
-            <span>{[entidade.cidade, entidade.rt && `${entidade.rt}ª RT`].filter(Boolean).join(', ')}</span>
+            {entidade.logo && <img className="brasao-lateral" src={entidade.logo} alt={`Brasão de ${entidade.nome}`} />}
+            <div>
+              <strong>{entidade.nome}</strong>
+              <span>{[entidade.cidade, entidade.rt && `${entidade.rt}ª RT`].filter(Boolean).join(', ')}</span>
+            </div>
           </div>
         )}
         <nav className="menu" aria-label="Menu principal">

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { orderBy, where } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
-import { useColecao, salvar, excluir, novoLote, emLotes } from '../lib/db';
+import { useColecao, salvar, excluir, novoLote, emLotes, resumoDe } from '../lib/db';
 import { FORMAS_PAGAMENTO } from '../lib/constantes';
 import { fmtMoeda, fmtData, competenciaAtual, hoje, somar, somarMeses, normalizar, arred, fmtCompetencia, ultimoDiaMes, diasEntre } from '../lib/format';
 import { relatorioPdf, reciboPdf } from '../lib/pdf';
@@ -50,7 +50,8 @@ export default function Contas() {
     await acao(async () => {
       const lote = novoLote();
       lote.atualizar(entidadeId, 'contas', c.id, { status: 'aberto', dataPagamento: null, forma: null, conta: null, valorPago: null, caixaId: null });
-      if (c.caixaId) lote.excluir(entidadeId, 'caixa', c.caixaId);
+      if (c.caixaId) lote.excluir(entidadeId, 'caixa', c.caixaId, `Estorno: ${c.descricao} (${fmtMoeda(c.valorPago ?? c.valor)})`);
+      lote.registrar('estornou', `Baixa da conta ${c.descricao}`, entidadeId);
       await lote.commit();
     }, 'Baixa estornada');
   }
@@ -171,12 +172,12 @@ export function FormConta({ conta, aoFechar, evento }) {
         parcela: n > 1 ? `${i + 1}/${n}` : null,
       };
     });
-    return acao(() => emLotes(itens, (lote, it) => lote.criar(entidadeId, 'contas', it)), n > 1 ? `${n} parcelas lançadas` : 'Conta lançada');
+    return acao(() => emLotes(itens, (lote, it) => lote.criar(entidadeId, 'contas', it), 400, entidadeId, `Conta a ${base.tipo}: ${base.descricao}`), n > 1 ? `${n} parcelas lançadas` : 'Conta lançada');
   }
 
   async function remover() {
     if (!window.confirm(`Excluir a conta "${conta.descricao}"?`)) return;
-    if (await acao(() => excluir(entidadeId, 'contas', conta.id), 'Conta excluída')) aoFechar();
+    if (await acao(() => excluir(entidadeId, 'contas', conta.id, resumoDe('contas', conta)), 'Conta excluída')) aoFechar();
   }
 
   return (
@@ -224,6 +225,7 @@ function BaixarConta({ conta, aoFechar }) {
         eventoId: conta.eventoId || null, eventoNome: conta.eventoNome || null,
       });
       lote.atualizar(entidadeId, 'contas', conta.id, { status: 'pago', dataPagamento: dados.data, forma: dados.forma, conta: dados.conta, valorPago, caixaId });
+      lote.registrar(pagar ? 'pagou' : 'recebeu', `${conta.descricao}: ${fmtMoeda(valorPago)} (${dados.forma})`, entidadeId);
       await lote.commit();
     }, pagar ? 'Pagamento registrado' : 'Recebimento registrado');
   }

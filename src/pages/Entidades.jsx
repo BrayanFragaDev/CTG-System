@@ -66,7 +66,7 @@ export default function Entidades() {
 function FormEntidade({ ent, entidades, aoFechar, aoCriar }) {
   const acao = useAcao();
   const novo = !ent.id;
-  const { dados, ligar } = useFormulario({ nome: '', tipo: 'CTG', uf: 'RS', ativo: true, ...ent });
+  const { dados, ligar, definir } = useFormulario({ nome: '', tipo: 'CTG', uf: 'RS', ativo: true, ...ent });
 
   function gravar() {
     const { id, config, criadoEm, atualizadoEm, ...resto } = dados;
@@ -83,7 +83,7 @@ function FormEntidade({ ent, entidades, aoFechar, aoCriar }) {
 
   return (
     <ModalForm largo titulo={novo ? 'Nova entidade' : `Editar ${ent.nome}`} aoFechar={aoFechar} aoSalvar={gravar}>
-      <CamposEntidade ligar={ligar} />
+      <CamposEntidade ligar={ligar} dados={dados} definir={definir} />
       {!novo && <label className="checkbox"><input type="checkbox" checked={dados.ativo !== false} onChange={ligar('ativo').onChange} />Entidade ativa</label>}
     </ModalForm>
   );

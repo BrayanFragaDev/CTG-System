@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { orderBy, where } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
-import { useColecao, salvar, excluir, novoLote } from '../lib/db';
+import { useColecao, salvar, excluir, novoLote, resumoDe } from '../lib/db';
 import { FORMAS_PAGAMENTO } from '../lib/constantes';
 import { fmtMoeda, fmtData, competenciaAtual, hoje, somar, arred, fmtCompetencia, ultimoDiaMes, normalizar } from '../lib/format';
 import { saldosAntesDe, CATEGORIA_TRANSFERENCIA } from '../lib/saldos';
@@ -11,7 +11,7 @@ import {
 } from '../components/ui';
 import Icone from '../components/Icone';
 
-const ORIGENS = { mensalidade: 'Mensalidade', conta: 'Conta', transferencia: 'Transferência', manual: 'Manual', evento: 'Evento' };
+const ORIGENS = { mensalidade: 'Mensalidade', conta: 'Conta', transferencia: 'Transferência', manual: 'Manual', evento: 'Evento', copa: 'Copa' };
 
 export default function Caixa() {
   const { entidadeId, entidade, config, podeEditar } = useAuth();
@@ -72,11 +72,11 @@ export default function Caixa() {
     if (m.grupo) {
       if (!window.confirm('Excluir esta transferência (as duas pontas)?')) return;
       const par = dados.filter((x) => x.grupo === m.grupo);
-      await acao(async () => { const l = novoLote(); par.forEach((x) => l.excluir(entidadeId, 'caixa', x.id)); await l.commit(); }, 'Transferência excluída');
+      await acao(async () => { const l = novoLote(); par.forEach((x) => l.excluir(entidadeId, 'caixa', x.id, resumoDe('caixa', x))); await l.commit(); }, 'Transferência excluída');
       return;
     }
     if (!window.confirm(`Excluir o lançamento "${m.descricao}"?`)) return;
-    await acao(() => excluir(entidadeId, 'caixa', m.id), 'Lançamento excluído');
+    await acao(() => excluir(entidadeId, 'caixa', m.id, resumoDe('caixa', m)), 'Lançamento excluído');
   }
 
   function exportarPdf() {
@@ -142,7 +142,7 @@ export default function Caixa() {
                     <td className="acoes-celula">
                       {editar && (!m.origem || m.origem === 'manual' || m.origem === 'evento') && <><button type="button" className="btn-link" onClick={() => setEditando(m)}>Editar</button>{' '}</>}
                       {editar && (!m.origem || ['manual', 'evento', 'transferencia'].includes(m.origem)) && <button type="button" className="btn-link" onClick={() => remover(m)}>Excluir</button>}
-                      {(m.origem === 'mensalidade' || m.origem === 'conta') && <span className="sub" title="Para desfazer, use Estornar na tela de origem">automático</span>}
+                      {['mensalidade', 'conta', 'copa'].includes(m.origem) && <span className="sub" title="Para desfazer, use Estornar na tela de origem">automático</span>}
                     </td>
                   </tr>
                 ))}

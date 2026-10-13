@@ -37,3 +37,17 @@ export const CATEGORIAS_INVERNADA = ['Pré-mirim', 'Mirim', 'Juvenil', 'Adulta',
 export const CATEGORIAS_PATRIMONIO = ['Pilcha / indumentária', 'Instrumento musical', 'Equipamento de som', 'Móvel', 'Utensílio de cozinha', 'Encilha / arreio', 'Troféu', 'Imóvel', 'Veículo', 'Outro'];
 
 export const ESTADOS_PATRIMONIO = ['Novo', 'Bom', 'Regular', 'Ruim', 'Baixado'];
+
+export const CATEGORIAS_PRODUTO = ['Bebidas', 'Comidas', 'Doces', 'Fichas e ingressos', 'Outros'];
+export const UNIDADES = ['un', 'lata', 'garrafa', 'long neck', 'pacote', 'kg', 'caixa'];
+
+// Sugestão para começar: o patrão ajusta preços e tira o que não usa
+export const PRODUTOS_SUGERIDOS = [
+  { nome: 'Cerveja lata 350 ml', categoria: 'Bebidas', unidade: 'lata' },
+  { nome: 'Cerveja garrafa 600 ml', categoria: 'Bebidas', unidade: 'garrafa' },
+  { nome: 'Refrigerante lata 350 ml', categoria: 'Bebidas', unidade: 'lata' },
+  { nome: 'Refrigerante 2 L', categoria: 'Bebidas', unidade: 'garrafa' },
+  { nome: 'Água sem gás 500 ml', categoria: 'Bebidas', unidade: 'garrafa' },
+  { nome: 'Água com gás 500 ml', categoria: 'Bebidas', unidade: 'garrafa' },
+  { nome: 'Doce / sobremesa', categoria: 'Doces', unidade: 'un' },
+];

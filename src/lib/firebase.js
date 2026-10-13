@@ -1,6 +1,7 @@
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut, connectAuthEmulator } from 'firebase/auth';
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
+import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 
 export const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -23,10 +24,21 @@ if (usarEmulador) {
   connectFirestoreEmulator(db, '127.0.0.1', 8080);
 }
 
+// App Check (opcional, recomendado): só aceita chamadas vindas do seu site,
+// bloqueando robôs que tentem usar a chave do Firebase por fora. Veja o README.
+const chaveRecaptcha = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
+function ativarAppCheck(instancia) {
+  if (configurado && chaveRecaptcha && !usarEmulador) {
+    initializeAppCheck(instancia, { provider: new ReCaptchaV3Provider(chaveRecaptcha), isTokenAutoRefreshEnabled: true });
+  }
+}
+ativarAppCheck(app);
+
 // Cria a conta de login de outra pessoa sem derrubar a sessão de quem está logado.
 // Usa uma instância secundária do Firebase só para o cadastro e depois a descarta.
 export async function criarContaLogin(email, senha) {
   const secundario = initializeApp(app.options, `cadastro-${Date.now()}`);
+  ativarAppCheck(secundario);
   try {
     const authSec = getAuth(secundario);
     if (usarEmulador) connectAuthEmulator(authSec, 'http://127.0.0.1:9099', { disableWarnings: true });

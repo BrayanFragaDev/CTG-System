@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { orderBy } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
-import { useColecao, salvar, excluir } from '../lib/db';
+import { useColecao, salvar, excluir, resumoDe } from '../lib/db';
 import { CATEGORIAS_INVERNADA } from '../lib/constantes';
 import { fmtData, hoje, idade, normalizar } from '../lib/format';
 import { relatorioPdf } from '../lib/pdf';
@@ -9,6 +9,8 @@ import {
   Cabecalho, Campo, Carregando, ErroLeitura, Modal, ModalForm, Selo, Vazio, useAcao, useFormulario,
 } from '../components/ui';
 import Icone from '../components/Icone';
+import { usePrivados, mascararCpf } from '../lib/socios';
+import { veDadosPessoais } from '../lib/permissoes';
 
 const FUNCOES = ['Prenda', 'Peão', 'Gaiteiro', 'Violonista', 'Percussionista', 'Cantor', 'Declamador', 'Posteiro', 'Instrutor', 'Ensaiador', 'Coordenador', 'Outro'];
 
@@ -70,7 +72,7 @@ function FormInvernada({ inv, aoFechar }) {
   }
   async function remover() {
     if (!window.confirm(`Excluir a invernada "${inv.nome}"? Os sócios continuam cadastrados.`)) return;
-    if (await acao(() => excluir(entidadeId, 'invernadas', inv.id), 'Invernada excluída')) aoFechar();
+    if (await acao(() => excluir(entidadeId, 'invernadas', inv.id, resumoDe('invernadas', inv)), 'Invernada excluída')) aoFechar();
   }
 
   return (
@@ -90,7 +92,9 @@ function FormInvernada({ inv, aoFechar }) {
 }
 
 function DetalheInvernada({ inv, socios, editar, aoFechar, aoEditar }) {
-  const { entidadeId, entidade } = useAuth();
+  const { entidadeId, entidade, papel } = useAuth();
+  const vePessoais = veDadosPessoais(papel);
+  const privados = usePrivados(entidadeId, vePessoais);
   const acao = useAcao();
   const [busca, setBusca] = useState('');
   const [funcao, setFuncao] = useState('Prenda');
@@ -116,7 +120,7 @@ function DetalheInvernada({ inv, socios, editar, aoFechar, aoEditar }) {
       entidade, titulo: `Relação de integrantes — ${inv.nome}`, subtitulo: `${inv.categoria}${inv.instrutor ? `, instrutor ${inv.instrutor}` : ''}`,
       secoes: [{
         colunas: ['Nome', 'Função', 'Nascimento', 'Idade', 'CPF', 'Cartão MTG'],
-        linhas: linhas.map((l) => [l.s.nome, l.funcao, fmtData(l.s.nascimento), idade(l.s.nascimento) ?? '', l.s.cpf || '', l.s.carteiraMtg || '']),
+        linhas: linhas.map((l) => [l.s.nome, l.funcao, fmtData(l.s.nascimento), idade(l.s.nascimento) ?? '', vePessoais ? (privados[l.socioId]?.cpf || l.s.cpf || '') : mascararCpf(privados[l.socioId]?.cpf || l.s.cpf), l.s.carteiraMtg || '']),
       }],
     });
   }

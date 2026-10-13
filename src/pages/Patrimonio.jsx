@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { orderBy } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
-import { useColecao, salvar, excluir } from '../lib/db';
+import { useColecao, salvar, excluir, resumoDe } from '../lib/db';
 import { CATEGORIAS_PATRIMONIO, ESTADOS_PATRIMONIO } from '../lib/constantes';
 import { fmtMoeda, fmtData, hoje, somar, normalizar } from '../lib/format';
 import { relatorioPdf } from '../lib/pdf';
@@ -119,7 +119,7 @@ function FormItem({ item, aoFechar }) {
   }
   async function remover() {
     if (!window.confirm(`Excluir "${item.descricao}"? Para itens que saíram do patrimônio, prefira o estado "Baixado" (mantém o histórico).`)) return;
-    if (await acao(() => excluir(entidadeId, 'patrimonio', item.id), 'Item excluído')) aoFechar();
+    if (await acao(() => excluir(entidadeId, 'patrimonio', item.id, resumoDe('patrimonio', item)), 'Item excluído')) aoFechar();
   }
 
   return (

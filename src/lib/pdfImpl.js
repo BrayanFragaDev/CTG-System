@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { fmtData, fmtMoeda, hoje, valorPorExtenso, fmtCompetencia } from './format';
+import { formatoImagem } from './imagens';
 
 const VERDE = [31, 58, 46];
 const COURO = [122, 82, 48];
@@ -16,14 +17,26 @@ function cabecalho(doc, entidade, titulo, subtitulo) {
   doc.setDrawColor(...COURO);
   doc.setLineWidth(1.2);
   doc.line(0, 22.6, L, 22.6);
+  // brasão num quadro claro à esquerda da faixa
+  let x = 12;
+  if (entidade?.logo) {
+    try {
+      const props = doc.getImageProperties(entidade.logo);
+      const alt = 16; const larg = Math.min(26, (props.width / props.height) * alt);
+      doc.setFillColor(243, 245, 241);
+      doc.roundedRect(10, 3, larg + 4, alt + 4, 1.5, 1.5, 'F');
+      doc.addImage(entidade.logo, formatoImagem(entidade.logo), 12, 5, larg, alt);
+      x = 12 + larg + 6;
+    } catch { /* imagem inválida: segue sem brasão */ }
+  }
   doc.setTextColor(255, 255, 255);
   doc.setFont('times', 'bold');
   doc.setFontSize(14);
-  doc.text(entidade?.nome || 'Entidade', 12, 10);
+  doc.text(entidade?.nome || 'Entidade', x, 10);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
   const linha2 = [entidade?.cnpj && `CNPJ ${entidade.cnpj}`, entidade?.cidade, entidade?.rt && `${entidade.rt}ª Região Tradicionalista`].filter(Boolean).join('   ');
-  if (linha2) doc.text(linha2, 12, 16);
+  if (linha2) doc.text(linha2, x, 16);
   doc.setTextColor(30, 30, 30);
   doc.setFont('times', 'bold');
   doc.setFontSize(15);
@@ -137,9 +150,17 @@ export function reciboMensalidades(entidade, socio, mensalidades, recebidoPor) {
   });
 }
 
-export function fichaSocioPdf(entidade, s, dependentes = []) {
+export function fichaSocioPdf(entidade, s, dependentes = [], foto = null) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   let y = cabecalho(doc, entidade, 'Ficha de sócio', `Matrícula ${s.matricula || '—'}`);
+  const L = doc.internal.pageSize.getWidth();
+  if (foto) {
+    try {
+      doc.addImage(foto, formatoImagem(foto), L - 12 - 30, 27, 30, 30);
+      doc.setDrawColor(...COURO); doc.setLineWidth(0.6); doc.rect(L - 12 - 30, 27, 30, 30);
+      y = Math.max(y, 61);
+    } catch { /* sem foto */ }
+  }
   const pares = [
     ['Nome', s.nome], ['CPF', s.cpf], ['RG', s.rg], ['Nascimento', fmtData(s.nascimento)], ['Sexo', s.sexo],
     ['Telefone', s.telefone], ['E-mail', s.email],

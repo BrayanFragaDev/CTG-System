@@ -1,9 +1,11 @@
-import { collection, query, where, limit, getDocs, getCountFromServer, writeBatch, doc } from 'firebase/firestore';
+import { collection, collectionGroup, query, where, limit, getDocs, getCountFromServer, writeBatch, doc } from 'firebase/firestore';
 import { db } from './firebase';
 
 export const SUBCOLECOES = [
   ['socios', 'sócios'], ['mensalidades', 'mensalidades'], ['contas', 'contas'], ['caixa', 'lançamentos de caixa'],
   ['eventos', 'eventos'], ['invernadas', 'invernadas'], ['patrimonio', 'itens de patrimônio'],
+  ['avisos', 'avisos enviados'], ['produtos', 'produtos da copa'], ['movEstoque', 'movimentos de estoque'],
+  ['copa', 'fechamentos de copa'], ['auditoria', 'registros de atividade'],
 ];
 
 // Quantos registros a entidade tem em cada módulo (e quantos usuários)
@@ -34,6 +36,17 @@ async function apagarConsulta(q, aoApagar) {
 export async function excluirEntidade(ent, aoProgresso = () => {}) {
   let feitos = 0;
   const conta = (n) => { feitos += n; aoProgresso(feitos); };
+  // áreas protegidas dos sócios (CPF/endereço) e leituras dos avisos ficam em subcoleções
+  await apagarConsulta(query(collectionGroup(db, 'privado'), where('entidadeId', '==', ent)), conta);
+  // fotos dos sócios (caminho conhecido: socios/{id}/foto/atual)
+  const socios = await getDocs(collection(db, 'entidades', ent, 'socios'));
+  for (let i = 0; i < socios.docs.length; i += 400) {
+    const lote = writeBatch(db);
+    socios.docs.slice(i, i + 400).forEach((d) => lote.delete(doc(d.ref, 'foto', 'atual')));
+    await lote.commit();
+  }
+  const avisos = await getDocs(collection(db, 'entidades', ent, 'avisos'));
+  for (const a of avisos.docs) await apagarConsulta(collection(a.ref, 'leituras'), conta);
   for (const [nome] of SUBCOLECOES) {
     await apagarConsulta(collection(db, 'entidades', ent, nome), conta);
   }

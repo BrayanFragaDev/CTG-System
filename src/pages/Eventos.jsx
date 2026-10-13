@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { orderBy, where } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
-import { useColecao, salvar, excluir } from '../lib/db';
+import { useColecao, salvar, excluir, resumoDe } from '../lib/db';
 import { TIPOS_EVENTO, FORMAS_PAGAMENTO } from '../lib/constantes';
 import { fmtMoeda, fmtData, hoje, somar, arred } from '../lib/format';
 import { relatorioPdf } from '../lib/pdf';
@@ -11,6 +11,7 @@ import {
 import Icone from '../components/Icone';
 import { FormMovimento } from './Caixa';
 import { FormConta } from './Contas';
+import { NovoAviso, DetalheAviso, eventoSemAviso } from './Avisos';
 
 const COR_STATUS = { Planejado: 'pendente', Confirmado: 'info', Realizado: 'ok', Cancelado: 'neutro' };
 
@@ -26,7 +27,10 @@ export default function Eventos() {
   const [aba, setAba] = useState('proximos');
   const [editando, setEditando] = useState(null);
   const [aberto, setAberto] = useState(null);
+  const [avisar, setAvisar] = useState(null);      // { evento, tipo }
+  const [avisoAberto, setAvisoAberto] = useState(null);
   const editar = podeEditar('eventos');
+  const podeAvisar = podeEditar('avisos');
 
   const proximos = dados.filter((e) => e.data >= hoje()).sort((a, b) => a.data.localeCompare(b.data));
   const passados = dados.filter((e) => e.data < hoje());
@@ -54,7 +58,8 @@ export default function Eventos() {
                     <td><strong>{fmtData(e.data)}</strong>{e.hora && <span className="sub">{e.hora}</span>}</td>
                     <td><strong>{e.nome}</strong><span className="sub">{[e.tipo, e.atracao].filter(Boolean).join(' — ')}</span></td>
                     <td className="esconder-mobile">{e.local || '—'}</td>
-                    <td><Selo tipo={COR_STATUS[e.status]}>{e.status}</Selo></td>
+                    <td><Selo tipo={COR_STATUS[e.status]}>{e.status}</Selo>
+                      {e.avisoEnviadoEm ? <span className="sub">sócios avisados</span> : eventoSemAviso(e) && <span className="sub" style={{ color: 'var(--lenco)' }}>sócios ainda não avisados</span>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -62,32 +67,46 @@ export default function Eventos() {
           </div>
         )}
       </div>
-      {editando && <FormEvento evento={editando} aoFechar={() => setEditando(null)} />}
+      {editando && <FormEvento evento={editando} aoFechar={() => setEditando(null)}
+        aoMudarStatus={podeAvisar ? (ev, tipo) => setAvisar({ evento: ev, tipo }) : null} />}
       {aberto && dados.find((e) => e.id === aberto) && (
         <DetalheEvento evento={dados.find((e) => e.id === aberto)} aoFechar={() => setAberto(null)}
-          aoEditar={editar ? (e) => { setAberto(null); setEditando(e); } : null} />
+          aoEditar={editar ? (e) => { setAberto(null); setEditando(e); } : null}
+          aoAvisar={podeAvisar ? (ev, tipo) => setAvisar({ evento: ev, tipo }) : null}
+          aoVerAviso={(id) => setAvisoAberto(id)} />
       )}
+      {avisar && <NovoAviso evento={avisar.evento} tipoEvento={avisar.tipo} aoFechar={() => setAvisar(null)}
+        aoEnviar={(id) => { setAvisar(null); setAvisoAberto(id); }} />}
+      {avisoAberto && <DetalheAviso avisoId={avisoAberto} aoFechar={() => setAvisoAberto(null)} />}
     </>
   );
 }
 
-function FormEvento({ evento, aoFechar }) {
+function FormEvento({ evento, aoFechar, aoMudarStatus }) {
   const { entidadeId, entidade } = useAuth();
   const acao = useAcao();
   const novo = !evento.id;
   const { dados, ligar } = useFormulario({ tipo: 'Baile', status: 'Planejado', data: hoje(), local: entidade?.nome || '', mostrarNoPortal: true, ...evento });
 
-  function gravar() {
-    return acao(() => salvar(entidadeId, 'eventos', evento.id, {
+  async function gravar() {
+    const registro = {
       ...dados, nome: dados.nome.trim(),
       precoSocio: dados.precoSocio === '' || dados.precoSocio == null ? null : Number(dados.precoSocio),
       precoNaoSocio: dados.precoNaoSocio === '' || dados.precoNaoSocio == null ? null : Number(dados.precoNaoSocio),
       capacidade: dados.capacidade ? Number(dados.capacidade) : null,
-    }), novo ? 'Evento marcado' : 'Evento atualizado');
+    };
+    let id = evento.id;
+    const ok = await acao(async () => { id = await salvar(entidadeId, 'eventos', evento.id, registro); }, novo ? 'Evento marcado' : 'Evento atualizado');
+    // Confirmou agora (ou cancelou um evento já anunciado): oferece o aviso pronto
+    if (ok && aoMudarStatus && dados.status !== evento.status) {
+      if (dados.status === 'Confirmado') aoMudarStatus({ ...registro, id }, 'confirmado');
+      if (dados.status === 'Cancelado' && evento.avisoEnviadoEm) aoMudarStatus({ ...registro, id }, 'cancelado');
+    }
+    return ok;
   }
   async function remover() {
     if (!window.confirm(`Excluir o evento "${evento.nome}"? Os lançamentos de caixa ligados a ele continuam no caixa.`)) return;
-    if (await acao(() => excluir(entidadeId, 'eventos', evento.id), 'Evento excluído')) aoFechar();
+    if (await acao(() => excluir(entidadeId, 'eventos', evento.id, resumoDe('eventos', evento)), 'Evento excluído')) aoFechar();
   }
 
   return (
@@ -113,8 +132,15 @@ function FormEvento({ evento, aoFechar }) {
   );
 }
 
-function DetalheEvento({ evento: e, aoFechar, aoEditar }) {
+function DetalheEvento({ evento: e, aoFechar, aoEditar, aoAvisar, aoVerAviso }) {
   const { entidadeId, entidade, config, podeEditar } = useAuth();
+  const acao = useAcao();
+  const editarEvento = podeEditar('eventos');
+  async function confirmar() {
+    if (await acao(() => salvar(entidadeId, 'eventos', e.id, { status: 'Confirmado' }, `evento confirmado: ${e.nome}`), 'Evento confirmado') && aoAvisar) {
+      aoAvisar({ ...e, status: 'Confirmado' }, 'confirmado');
+    }
+  }
   const movs = useColecao(entidadeId, 'caixa', [where('eventoId', '==', e.id)], e.id);
   const contas = useColecao(entidadeId, 'contas', [where('eventoId', '==', e.id)], e.id);
   const [novoMov, setNovoMov] = useState(null);
@@ -161,6 +187,27 @@ function DetalheEvento({ evento: e, aoFechar, aoEditar }) {
         <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
           <Selo tipo={COR_STATUS[e.status]}>{e.status}</Selo><Selo>{e.tipo}</Selo>
         </div>
+        {e.status === 'Planejado' && editarEvento && e.data >= hoje() && (
+          <div className="faixa-acao">
+            <span>Tudo certo com o conjunto, o local e os ingressos? Confirme o evento para avisar os sócios.</span>
+            <button type="button" className="btn btn-primario btn-peq" onClick={confirmar}>Confirmar evento</button>
+          </div>
+        )}
+        {eventoSemAviso(e) && aoAvisar && (
+          <div className="faixa-acao alerta">
+            <span><strong>Evento confirmado, mas os sócios ainda não foram avisados.</strong></span>
+            <button type="button" className="btn btn-primario btn-peq" onClick={() => aoAvisar(e, 'confirmado')}>Avisar os sócios</button>
+          </div>
+        )}
+        {e.avisoEnviadoEm && (
+          <div className="faixa-acao ok">
+            <span>Sócios avisados {e.avisoEnviadoEm.seconds ? `em ${new Date(e.avisoEnviadoEm.seconds * 1000).toLocaleDateString('pt-BR')}` : ''}.</span>
+            <span className="acoes">
+              {e.ultimoAvisoId && <button type="button" className="btn btn-peq" onClick={() => aoVerAviso(e.ultimoAvisoId)}>Ver quem recebeu</button>}
+              {aoAvisar && <button type="button" className="btn btn-peq" onClick={() => aoAvisar(e, e.status === 'Cancelado' ? 'cancelado' : 'confirmado')}>Novo aviso</button>}
+            </span>
+          </div>
+        )}
         <dl className="ficha">
           <div><dt>Data</dt><dd>{fmtData(e.data)}{e.hora && `, ${e.hora}`}</dd></div>
           <div><dt>Local</dt><dd>{e.local || '—'}</dd></div>

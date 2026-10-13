@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { orderBy, where } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
-import { useColecao, salvar, excluir, buscar } from '../lib/db';
+import { useColecao, excluir, buscar, resumoDe, registrarAtividade } from '../lib/db';
+import { salvarSocio, usePrivados, precisaMigrar, migrarDadosPessoais, mascararCpf, salvarFoto, useFoto, excluirSocio } from '../lib/socios';
+import { prepararFoto } from '../lib/imagens';
+import { veDadosPessoais, exportaDadosPessoais } from '../lib/permissoes';
 import { SITUACOES_SOCIO } from '../lib/constantes';
 import { fmtData, fmtMoeda, fmtCompetencia, hoje, idade, normalizar, mascaraCpf, mascaraTelefone } from '../lib/format';
 import { relatorioPdf, fichaSocioPdf } from '../lib/pdf';
 import { baixarCsv } from '../lib/csv';
 import {
-  Cabecalho, Campo, Carregando, ErroLeitura, Modal, ModalForm, Selo, Vazio, useAcao, useFormulario,
+  SeletorImagem, Cabecalho, Campo, Carregando, ErroLeitura, Modal, ModalForm, Selo, Vazio, useAcao, useFormulario,
 } from '../components/ui';
 import Icone from '../components/Icone';
 
@@ -19,8 +22,12 @@ export function valorMensalidadeSocio(socio, config) {
 }
 
 export default function Socios() {
-  const { entidadeId, entidade, config, podeEditar } = useAuth();
+  const { entidadeId, entidade, config, podeEditar, papel } = useAuth();
   const { dados: socios, carregando, erro } = useColecao(entidadeId, 'socios', [orderBy('nome')]);
+  const vePessoais = veDadosPessoais(papel);
+  const privados = usePrivados(entidadeId, vePessoais);
+  const acao = useAcao();
+  const pendentesMigracao = socios.filter(precisaMigrar);
   const [busca, setBusca] = useState('');
   const [situacao, setSituacao] = useState('Ativo');
   const [categoria, setCategoria] = useState('');
@@ -33,8 +40,8 @@ export default function Socios() {
     return socios.filter((s) =>
       (!situacao || s.situacao === situacao)
       && (!categoria || s.categoria === categoria)
-      && (!b || normalizar(`${s.nome} ${s.matricula} ${s.cpf} ${s.telefone} ${s.email}`).includes(b)));
-  }, [socios, busca, situacao, categoria]);
+      && (!b || normalizar(`${s.nome} ${s.matricula} ${privados[s.id]?.cpf || ''} ${s.telefone} ${s.email}`).includes(b)));
+  }, [socios, busca, situacao, categoria, privados]);
 
   const proximaMatricula = useMemo(
     () => socios.reduce((m, s) => Math.max(m, Number(s.matricula) || 0), 0) + 1, [socios]);
@@ -50,24 +57,32 @@ export default function Socios() {
       }],
     });
   }
-  function exportarCsv() {
+  async function exportarCsv() {
+    await registrarAtividade(entidadeId, 'exportou', `Planilha de sócios com dados pessoais (${filtrados.length} registros)`).catch(() => {});
+    const p = (s) => ({ ...s, ...(privados[s.id] || {}) });
     baixarCsv('socios', ['Matrícula', 'Nome', 'CPF', 'RG', 'Nascimento', 'Sexo', 'Telefone', 'E-mail', 'Endereço', 'Bairro', 'Cidade', 'CEP', 'Categoria', 'Situação', 'Admissão', 'Cartão MTG', 'Observações'],
-      filtrados.map((s) => [s.matricula, s.nome, s.cpf, s.rg, fmtData(s.nascimento), s.sexo, s.telefone, s.email, s.endereco, s.bairro, s.cidade, s.cep, s.categoria, s.situacao, fmtData(s.dataAdmissao), s.carteiraMtg, s.observacoes]));
+      filtrados.map(p).map((s) => [s.matricula, s.nome, s.cpf, s.rg, fmtData(s.nascimento), s.sexo, s.telefone, s.email, s.endereco, s.bairro, s.cidade, s.cep, s.categoria, s.situacao, fmtData(s.dataAdmissao), s.carteiraMtg, s.observacoes]));
   }
 
   return (
     <>
       <Cabecalho titulo="Sócios" descricao={`${socios.filter((s) => s.situacao === 'Ativo').length} ativos de ${socios.length} cadastrados`}>
-        <button type="button" className="btn" onClick={exportarCsv}>Planilha</button>
+        {exportaDadosPessoais(papel) && <button type="button" className="btn" onClick={exportarCsv}>Planilha</button>}
         <button type="button" className="btn" onClick={exportarPdf}><Icone nome="pdf" tam={18} />PDF</button>
         {editar && <button type="button" className="btn btn-primario" onClick={() => setEditando({})}><Icone nome="mais" tam={18} />Novo sócio</button>}
       </Cabecalho>
       <ErroLeitura erro={erro} />
+      {editar && pendentesMigracao.length > 0 && (
+        <div className="aviso" style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ flex: 1 }}><strong>{pendentesMigracao.length} cadastro(s) guardam CPF ou endereço no lugar antigo</strong>, visível a toda a diretoria. Mova para a área protegida, que só patrão, secretário e coordenador artístico acessam.</span>
+          <button type="button" className="btn btn-primario btn-peq" onClick={() => acao(() => migrarDadosPessoais(entidadeId, socios), 'Dados pessoais protegidos')}>Proteger agora</button>
+        </div>
+      )}
       <div className="painel">
         <div className="filtros">
           <div className="campo">
             <label htmlFor="busca-socio">Buscar</label>
-            <input id="busca-socio" type="search" placeholder="Nome, matrícula, CPF ou telefone" value={busca} onChange={(e) => setBusca(e.target.value)} />
+            <input id="busca-socio" type="search" placeholder={vePessoais ? 'Nome, matrícula, CPF ou telefone' : 'Nome, matrícula ou telefone'} value={busca} onChange={(e) => setBusca(e.target.value)} />
           </div>
           <div className="campo">
             <label htmlFor="f-sit">Situação</label>
@@ -113,11 +128,11 @@ export default function Socios() {
       </div>
 
       {editando && (
-        <FormSocio socio={editando} socios={socios} proximaMatricula={proximaMatricula}
+        <FormSocio socio={{ ...editando, ...(editando.id ? privados[editando.id] : {}) }} socios={socios} privados={privados} proximaMatricula={proximaMatricula}
           aoFechar={() => setEditando(null)} />
       )}
       {ficha && (
-        <FichaSocio socio={socios.find((s) => s.id === ficha.id) || ficha} socios={socios}
+        <FichaSocio socio={socios.find((s) => s.id === ficha.id) || ficha} privado={privados[ficha.id]} vePessoais={vePessoais} socios={socios}
           aoFechar={() => setFicha(null)}
           aoEditar={editar ? (s) => { setFicha(null); setEditando(s); } : null} />
       )}
@@ -125,34 +140,40 @@ export default function Socios() {
   );
 }
 
-function FormSocio({ socio, socios, proximaMatricula, aoFechar }) {
+function FormSocio({ socio, socios, privados, proximaMatricula, aoFechar }) {
   const { entidadeId, config } = useAuth();
   const acao = useAcao();
   const novo = !socio.id;
   const { dados, ligar } = useFormulario({
     matricula: proximaMatricula, situacao: 'Ativo', categoria: config.categoriasSocio[0]?.nome,
-    dataAdmissao: hoje(), cidade: '', valorMensalidade: '', ...socio,
+    dataAdmissao: hoje(), cidade: '', valorMensalidade: '', aceitaAvisos: true, ...socio,
   });
   const titulares = socios.filter((s) => s.id !== socio.id && !s.titularId && s.situacao !== 'Falecido');
+  const fotoAtual = useFoto(entidadeId, socio.id);
+  const [foto, setFoto] = useState(undefined);       // undefined = não mexeu
+  const fotoMostrada = foto === undefined ? fotoAtual : foto;
 
   async function gravar() {
-    if (dados.cpf && socios.some((s) => s.id !== socio.id && s.cpf && s.cpf === dados.cpf)) {
+    if (dados.cpf && socios.some((s) => s.id !== socio.id && (privados[s.id]?.cpf || s.cpf) === dados.cpf)) {
       throw new Error('Já existe um sócio com este CPF.');
     }
     const titular = socios.find((s) => s.id === dados.titularId);
-    await salvar(entidadeId, 'socios', socio.id, {
-      ...dados,
+    const { entidadeId: _e, socioId: _s, atualizadoEm: _a, atualizadoPor: _p, atualizadoPorUid: _u, criadoEm: _c, ...campos } = dados;
+    const id = await salvarSocio(entidadeId, socio.id, {
+      ...campos,
+      consentimentoEm: dados.consentimentoLgpd ? (socio.consentimentoEm || hoje()) : null,
       nome: dados.nome.trim(),
       matricula: Number(dados.matricula) || dados.matricula,
       titularId: dados.titularId || null,
       titularNome: titular?.nome || null,
       valorMensalidade: dados.valorMensalidade === '' ? '' : Number(dados.valorMensalidade),
     });
+    if (foto !== undefined && (foto || fotoAtual)) await salvarFoto(entidadeId, id, foto);
   }
 
   async function remover() {
     if (!window.confirm(`Excluir ${socio.nome} do cadastro? As mensalidades já lançadas continuam no histórico.\n\nSe a pessoa apenas saiu da entidade, prefira mudar a situação para "Inativo".`)) return;
-    if (await acao(() => excluir(entidadeId, 'socios', socio.id), 'Sócio excluído')) aoFechar();
+    if (await acao(() => excluirSocio(entidadeId, socio), 'Sócio excluído')) aoFechar();
   }
 
   return (
@@ -161,6 +182,10 @@ function FormSocio({ socio, socios, proximaMatricula, aoFechar }) {
       extraRodape={!novo && <button type="button" className="btn btn-perigo" onClick={remover}>Excluir</button>}>
       <div className="form-grade-3">
         <div className="secao-form">Identificação</div>
+        <div className="col-3">
+          <SeletorImagem rotulo="Foto" redonda valor={fotoMostrada || null} aoMudar={setFoto} preparar={prepararFoto}
+            textoVazio={fotoMostrada === undefined ? '…' : 'Sem foto'} ajuda="Aparece na ficha e na carteirinha do portal. O sócio também pode trocar a própria foto pelo portal." />
+        </div>
         <Campo rotulo="Nome completo" className="col-2"><input {...ligar('nome', { obrigatorio: true })} autoFocus /></Campo>
         <Campo rotulo="Matrícula"><input {...ligar('matricula')} /></Campo>
         <Campo rotulo="CPF"><input inputMode="numeric" {...ligar('cpf', { mascara: mascaraCpf })} /></Campo>
@@ -172,6 +197,7 @@ function FormSocio({ socio, socios, proximaMatricula, aoFechar }) {
         <Campo rotulo="Cartão tradicionalista (MTG)"><input {...ligar('carteiraMtg')} /></Campo>
 
         <div className="secao-form">Contato</div>
+        <p className="col-3 sub" style={{ marginTop: '-.4rem', marginBottom: '.8rem' }}>CPF, RG e endereço ficam numa área protegida: só patrão, secretário, coordenador artístico e o próprio sócio conseguem ver.</p>
         <Campo rotulo="Telefone / WhatsApp"><input inputMode="tel" {...ligar('telefone', { mascara: mascaraTelefone })} /></Campo>
         <Campo rotulo="E-mail" className="col-2"><input type="email" {...ligar('email')} /></Campo>
         <Campo rotulo="Endereço" className="col-2"><input {...ligar('endereco')} /></Campo>
@@ -198,13 +224,23 @@ function FormSocio({ socio, socios, proximaMatricula, aoFechar }) {
           <label className="checkbox"><input type="checkbox" checked={Boolean(dados.isento)} onChange={ligar('isento').onChange} />Não gerar mensalidades</label>
         </div>
         <Campo rotulo="Observações" className="col-3"><textarea {...ligar('observacoes')} /></Campo>
+
+        <div className="secao-form">Privacidade (LGPD)</div>
+        <div className="col-3" style={{ display: 'grid', gap: '.6rem', marginBottom: '1rem' }}>
+          <label className="checkbox"><input type="checkbox" checked={Boolean(dados.consentimentoLgpd)} onChange={ligar('consentimentoLgpd').onChange} />
+            O sócio autorizou o uso dos seus dados para a gestão da entidade{socio.consentimentoEm ? ` (em ${fmtData(socio.consentimentoEm)})` : ''}</label>
+          <label className="checkbox"><input type="checkbox" checked={dados.aceitaAvisos !== false} onChange={ligar('aceitaAvisos').onChange} />
+            Aceita receber avisos por WhatsApp e e-mail</label>
+        </div>
       </div>
     </ModalForm>
   );
 }
 
-function FichaSocio({ socio: s, socios, aoFechar, aoEditar }) {
+function FichaSocio({ socio: s0, privado, vePessoais, socios, aoFechar, aoEditar }) {
+  const s = { ...s0, ...(privado || {}) };
   const { entidadeId, entidade, config, pode } = useAuth();
+  const foto = useFoto(entidadeId, s0.id);
   const [mens, setMens] = useState(null);
   const dependentes = socios.filter((d) => d.titularId === s.id);
   const verFinanceiro = pode('mensalidades');
@@ -222,25 +258,30 @@ function FichaSocio({ socio: s, socios, aoFechar, aoEditar }) {
 
   return (
     <Modal largo titulo={s.nome} aoFechar={aoFechar} rodape={<>
-      <button type="button" className="btn" onClick={() => fichaSocioPdf(entidade, s, dependentes)}><Icone nome="pdf" tam={18} />Ficha em PDF</button>
+      <button type="button" className="btn" onClick={() => fichaSocioPdf(entidade, vePessoais ? s : { ...s, cpf: mascararCpf(s.cpf), rg: '', endereco: '', bairro: '', cep: '' }, dependentes, foto)}><Icone nome="pdf" tam={18} />Ficha em PDF</button>
       {aoEditar && <button type="button" className="btn btn-primario" onClick={() => aoEditar(s)}>Editar cadastro</button>}
     </>}>
-      <div style={{ display: 'flex', gap: '.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+      <div className="ficha-topo">
+        {foto && <img className="foto-ficha" src={foto} alt={`Foto de ${s.nome}`} />}
+      <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap' }}>
         <Selo tipo={corSituacao[s.situacao]}>{s.situacao}</Selo>
         <Selo>{s.categoria}</Selo>
         {s.isento && <Selo tipo="info">Isento</Selo>}
         {atrasadas.length > 0 && <Selo tipo="atraso">{atrasadas.length} mensalidade(s) em atraso</Selo>}
       </div>
+      </div>
       <dl className="ficha">
         <div><dt>Matrícula</dt><dd>{s.matricula || '—'}</dd></div>
-        <div><dt>CPF</dt><dd>{s.cpf || '—'}</dd></div>
+        <div><dt>CPF</dt><dd>{vePessoais ? (s.cpf || '—') : mascararCpf(s.cpf)}</dd></div>
         <div><dt>Nascimento</dt><dd>{fmtData(s.nascimento)}{s.nascimento && ` (${idade(s.nascimento)} anos)`}</dd></div>
         <div><dt>Telefone</dt><dd>{s.telefone ? <a href={`https://wa.me/55${s.telefone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer">{s.telefone}</a> : '—'}</dd></div>
         <div><dt>E-mail</dt><dd>{s.email || '—'}</dd></div>
         <div><dt>Admissão</dt><dd>{fmtData(s.dataAdmissao)}</dd></div>
         <div><dt>Mensalidade</dt><dd>{s.isento ? 'Isento' : fmtMoeda(valorMensalidadeSocio(s, config))}</dd></div>
         <div><dt>Cartão MTG</dt><dd>{s.carteiraMtg || '—'}</dd></div>
-        <div style={{ gridColumn: '1 / -1' }}><dt>Endereço</dt><dd>{[s.endereco, s.bairro, s.cidade, s.cep].filter(Boolean).join(', ') || '—'}</dd></div>
+        <div style={{ gridColumn: '1 / -1' }}><dt>Endereço</dt><dd>{vePessoais ? ([s.endereco, s.bairro, s.cidade, s.cep].filter(Boolean).join(', ') || '—') : `${s.cidade || '—'} (endereço completo restrito)`}</dd></div>
+        <div><dt>Autorização LGPD</dt><dd>{s.consentimentoLgpd ? `Sim${s.consentimentoEm ? `, em ${fmtData(s.consentimentoEm)}` : ''}` : <Selo tipo="pendente">Pendente</Selo>}</dd></div>
+        <div><dt>Recebe avisos</dt><dd>{s.aceitaAvisos === false ? 'Não' : 'Sim'}</dd></div>
         {s.titularNome && <div><dt>Dependente de</dt><dd>{s.titularNome}</dd></div>}
         {s.observacoes && <div style={{ gridColumn: '1 / -1' }}><dt>Observações</dt><dd>{s.observacoes}</dd></div>}
       </dl>

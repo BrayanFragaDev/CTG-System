@@ -1,13 +1,21 @@
 rules_version = '2';
 
 // Regras de segurança do CTG Inteligente.
-// Cada entidade guarda seus dados em /entidades/{entidadeId}/... e só quem
-// pertence a ela (ou o administrador do sistema) consegue ler ou gravar.
-// A matriz de papéis é a mesma de src/lib/permissoes.js.
+//
+// Princípios:
+//  1. Nada é público. Toda leitura/gravação exige login + perfil ativo ligado à entidade.
+//  2. Cada papel só grava o que lhe cabe (mesma matriz de src/lib/permissoes.js).
+//  3. Toda gravação leva o carimbo de quem fez (uid) e a hora do servidor.
+//  4. Nenhuma exclusão acontece sem uma linha no registro de atividades,
+//     e o registro não pode ser alterado nem apagado (só junto com a entidade inteira).
+//  5. CPF, RG e endereço ficam em socios/{id}/privado/dados e só são lidos por
+//     patrão, secretário, coordenador artístico e pelo próprio sócio (LGPD).
+//  6. Valores e datas são validados: nada de valor negativo, data inválida ou status inventado.
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // ---------- Quem é o usuário ----------
     function logado() { return request.auth != null; }
     function caminhoUsuario() { return /databases/$(database)/documents/usuarios/$(request.auth.uid); }
     function temPerfil() { return logado() && exists(caminhoUsuario()); }
@@ -18,10 +26,33 @@ service cloud.firestore {
     function membro(ent) { return ativo() && usuario().entidadeId == ent && entidadeAtiva(ent); }
     function temPapel(ent, papeis) { return superadmin() || (membro(ent) && usuario().papel in papeis); }
     function equipe(ent) { return temPapel(ent, ['admin', 'tesoureiro', 'secretario', 'cultural', 'consulta']); }
-    function socioDono(ent) { return membro(ent) && usuario().papel == 'socio' && usuario().socioId != null; }
+    function equipeOuCopa(ent) { return temPapel(ent, ['admin', 'tesoureiro', 'secretario', 'cultural', 'consulta', 'copa']); }
+    function socioDono(ent) { return membro(ent) && usuario().papel == 'socio' && usuario().get('socioId', null) != null; }
+
+    // ---------- Validações ----------
+    function novo() { return request.resource.data; }
+    function carimbo() {
+      return novo().atualizadoPorUid == request.auth.uid && novo().atualizadoEm == request.time;
+    }
+    function texto(v, max) { return v is string && v.size() <= max; }
+    function textoObrigatorio(v, max) { return v is string && v.size() > 0 && v.size() <= max; }
+    function dataValida(v) { return v is string && v.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'); }
+    function mesValido(v) { return v is string && v.matches('^[0-9]{4}-[0-9]{2}$'); }
+    function valorValido(v) { return v is number && v >= 0 && v < 10000000; }
+    // Imagens guardadas como data URL (PNG/JPEG), com tamanho máximo
+    function imagemValida(v, max) {
+      return v is string && v.size() <= max && v.matches('data:image/(png|jpeg);base64,[A-Za-z0-9+/=]+');
+    }
+
+    // Grava (cria/altera) com o papel certo + carimbo
+    function grava(ent, papeis) { return temPapel(ent, papeis) && carimbo(); }
+    // Exclui só se o mesmo lote criou a linha do registro de atividades
+    function exclui(ent, papeis, colecao, id) {
+      return superadmin() || (temPapel(ent, papeis)
+        && existsAfter(/databases/$(database)/documents/entidades/$(ent)/auditoria/$('del_' + colecao + '_' + id)));
+    }
 
     // ---------- Instalação inicial ----------
-    // O primeiro usuário cria /config/sistema e vira administrador do sistema.
     match /config/sistema {
       allow get: if true;
       allow create: if logado()
@@ -33,11 +64,9 @@ service cloud.firestore {
     // ---------- Perfis de usuário ----------
     match /usuarios/{uid} {
       function papelValidoEntidade() {
-        return request.resource.data.papel in ['admin', 'tesoureiro', 'secretario', 'cultural', 'consulta', 'socio'];
+        return request.resource.data.papel in ['admin', 'tesoureiro', 'secretario', 'cultural', 'consulta', 'copa', 'socio'];
       }
-      function adminDaEntidade(ent) {
-        return membro(ent) && usuario().papel == 'admin';
-      }
+      function adminDaEntidade(ent) { return membro(ent) && usuario().papel == 'admin'; }
       function bootstrap() {
         return logado() && uid == request.auth.uid
           && !exists(/databases/$(database)/documents/config/sistema)
@@ -55,7 +84,7 @@ service cloud.firestore {
         || superadmin()
         || (adminDaEntidade(request.resource.data.entidadeId) && papelValidoEntidade());
 
-      // Ninguém altera o próprio papel; admin só mexe em usuários da sua entidade
+      // Ninguém muda o próprio papel; admin só mexe em usuários da sua entidade
       allow update: if superadmin()
         || (adminDaEntidade(resource.data.entidadeId)
             && request.resource.data.entidadeId == resource.data.entidadeId
@@ -68,50 +97,182 @@ service cloud.firestore {
         || (adminDaEntidade(resource.data.entidadeId) && uid != request.auth.uid);
     }
 
-    // ---------- Entidades (CTGs, piquetes, DTGs) ----------
+    // CPF/RG/endereço em consulta de grupo (planilha, busca por CPF): só quem pode ver
+    match /{caminho=**}/privado/{docId} {
+      allow list: if temPapel(resource.data.entidadeId, ['admin', 'secretario', 'cultural']);
+    }
+
+    // ---------- Entidades ----------
     match /entidades/{ent} {
       allow get: if superadmin() || membro(ent);
       allow list: if superadmin();
       allow create, delete: if superadmin();
-      allow update: if temPapel(ent, ['admin']);
+      allow update: if temPapel(ent, ['admin']) && textoObrigatorio(request.resource.data.nome, 200)
+        && (request.resource.data.get('logo', null) == null || imagemValida(request.resource.data.logo, 250000));
 
       match /socios/{id} {
         allow get: if equipe(ent) || (socioDono(ent) && usuario().socioId == id);
         allow list: if equipe(ent);
-        allow write: if temPapel(ent, ['admin', 'secretario']);
+        allow create, update: if grava(ent, ['admin', 'secretario'])
+          && textoObrigatorio(novo().nome, 200)
+          && novo().situacao in ['Ativo', 'Licenciado', 'Inativo', 'Falecido']
+          && !('cpf' in novo()) && !('rg' in novo());   // documentos só no doc privado
+        allow delete: if exclui(ent, ['admin', 'secretario'], 'socios', id);
+
+        match /privado/{docId} {
+          allow get: if temPapel(ent, ['admin', 'secretario', 'cultural'])
+            || (socioDono(ent) && usuario().socioId == id);
+          allow create, update: if grava(ent, ['admin', 'secretario'])
+            && novo().entidadeId == ent && novo().socioId == id
+            && texto(novo().get('cpf', ''), 20) && texto(novo().get('rg', ''), 30);
+          allow delete: if temPapel(ent, ['admin', 'secretario']);
+        }
+
+        // Foto: equipe e o próprio sócio veem; patrão, secretário e o próprio sócio trocam
+        match /foto/{docId} {
+          function dono() { return socioDono(ent) && usuario().socioId == id; }
+          allow get: if equipe(ent) || dono();
+          allow create, update: if docId == 'atual'
+            && (grava(ent, ['admin', 'secretario']) || (dono() && carimbo()))
+            && novo().entidadeId == ent && novo().socioId == id
+            && imagemValida(novo().imagem, 120000);
+          allow delete: if temPapel(ent, ['admin', 'secretario']) || dono();
+        }
       }
 
       match /mensalidades/{id} {
         allow read: if equipe(ent)
           || (socioDono(ent) && resource.data.socioId == usuario().socioId);
-        allow write: if temPapel(ent, ['admin', 'tesoureiro']);
+        allow create, update: if grava(ent, ['admin', 'tesoureiro'])
+          && novo().socioId is string
+          && mesValido(novo().competencia)
+          && dataValida(novo().vencimento)
+          && valorValido(novo().valor)
+          && novo().status in ['aberto', 'pago', 'cancelado']
+          && (novo().status != 'pago' || (dataValida(novo().dataPagamento) && valorValido(novo().valorPago)));
+        allow delete: if exclui(ent, ['admin', 'tesoureiro'], 'mensalidades', id);
       }
 
       match /contas/{id} {
         allow read: if equipe(ent);
-        allow write: if temPapel(ent, ['admin', 'tesoureiro']);
+        allow create, update: if grava(ent, ['admin', 'tesoureiro'])
+          && novo().tipo in ['pagar', 'receber']
+          && novo().status in ['aberto', 'pago']
+          && textoObrigatorio(novo().descricao, 300)
+          && dataValida(novo().vencimento)
+          && valorValido(novo().valor);
+        allow delete: if exclui(ent, ['admin', 'tesoureiro'], 'contas', id);
       }
 
       match /caixa/{id} {
         allow read: if equipe(ent);
-        allow write: if temPapel(ent, ['admin', 'tesoureiro'])
-          && (request.resource == null || request.resource.data.valor is number);
+        allow create, update: if grava(ent, ['admin', 'tesoureiro'])
+          && novo().tipo in ['entrada', 'saida']
+          && valorValido(novo().valor) && novo().valor > 0
+          && dataValida(novo().data)
+          && textoObrigatorio(novo().conta, 100)
+          && textoObrigatorio(novo().descricao, 300);
+        allow delete: if exclui(ent, ['admin', 'tesoureiro'], 'caixa', id);
       }
 
       match /eventos/{id} {
-        // Sócios veem a agenda de eventos no portal
-        allow read: if equipe(ent) || socioDono(ent);
-        allow write: if temPapel(ent, ['admin', 'tesoureiro', 'secretario', 'cultural']);
+        // Sócios veem a agenda no portal
+        allow read: if equipe(ent) || socioDono(ent) || temPapel(ent, ['copa']);
+        allow create, update: if grava(ent, ['admin', 'tesoureiro', 'secretario', 'cultural'])
+          && textoObrigatorio(novo().nome, 200) && dataValida(novo().data);
+        allow delete: if exclui(ent, ['admin', 'tesoureiro', 'secretario', 'cultural'], 'eventos', id);
       }
 
       match /invernadas/{id} {
         allow read: if equipe(ent);
-        allow write: if temPapel(ent, ['admin', 'secretario', 'cultural']);
+        allow create, update: if grava(ent, ['admin', 'secretario', 'cultural']) && textoObrigatorio(novo().nome, 200);
+        allow delete: if exclui(ent, ['admin', 'secretario', 'cultural'], 'invernadas', id);
       }
 
       match /patrimonio/{id} {
         allow read: if equipe(ent);
-        allow write: if temPapel(ent, ['admin', 'tesoureiro', 'secretario']);
+        allow create, update: if grava(ent, ['admin', 'tesoureiro', 'secretario']) && textoObrigatorio(novo().descricao, 300);
+        allow delete: if exclui(ent, ['admin', 'tesoureiro', 'secretario'], 'patrimonio', id);
+      }
+
+      // ---------- Avisos aos sócios ----------
+      match /avisos/{id} {
+        // O sócio só lê os avisos em que está entre os destinatários
+        allow read: if equipe(ent)
+          || (socioDono(ent) && usuario().socioId in resource.data.destinatarios);
+        allow create, update: if grava(ent, ['admin', 'tesoureiro', 'secretario', 'cultural'])
+          && textoObrigatorio(novo().titulo, 150)
+          && textoObrigatorio(novo().mensagem, 4000)
+          && novo().destinatarios is list && novo().destinatarios.size() <= 5000;
+        allow delete: if exclui(ent, ['admin', 'tesoureiro', 'secretario', 'cultural'], 'avisos', id);
+
+        // Confirmação de leitura: cada sócio cria só a sua, uma vez, e ninguém altera
+        match /leituras/{uid} {
+          allow get: if equipe(ent) || (logado() && uid == request.auth.uid);
+          allow list: if equipe(ent);
+          allow create: if socioDono(ent) && uid == request.auth.uid
+            && request.resource.data.keys().hasOnly(['em', 'socioId'])
+            && request.resource.data.em == request.time
+            && request.resource.data.socioId == usuario().socioId
+            && usuario().socioId in get(/databases/$(database)/documents/entidades/$(ent)/avisos/$(id)).data.destinatarios;
+          allow update: if false;
+          allow delete: if superadmin();
+        }
+      }
+
+      // ---------- Copa e estoque ----------
+      // Patrão e tesoureiro cadastram produtos e preços; o responsável pela copa
+      // só altera a quantidade em estoque (contagem e fechamento).
+      match /produtos/{id} {
+        function produtoValido() {
+          return textoObrigatorio(novo().nome, 120) && valorValido(novo().precoVenda)
+            && valorValido(novo().precoCusto) && novo().estoque is number;
+        }
+        allow read: if equipeOuCopa(ent);
+        allow create: if grava(ent, ['admin', 'tesoureiro']) && produtoValido();
+        allow update: if (grava(ent, ['admin', 'tesoureiro']) && produtoValido())
+          || (grava(ent, ['copa']) && novo().estoque is number
+              && novo().diff(resource.data).affectedKeys().hasOnly(['estoque', 'atualizadoEm', 'atualizadoPor', 'atualizadoPorUid']));
+        allow delete: if exclui(ent, ['admin', 'tesoureiro'], 'produtos', id);
+      }
+
+      // Movimentos de estoque: só acréscimo. Compra só por quem mexe no caixa.
+      match /movEstoque/{id} {
+        allow read: if equipeOuCopa(ent);
+        allow create: if grava(ent, ['admin', 'tesoureiro', 'copa'])
+          && novo().tipo in ['compra', 'venda', 'perda', 'consumo', 'ajuste']
+          && novo().quantidade is number && novo().produtoId is string && dataValida(novo().data)
+          && (novo().tipo != 'compra' || temPapel(ent, ['admin', 'tesoureiro']));
+        allow update: if false;
+        allow delete: if exclui(ent, ['admin', 'tesoureiro'], 'movEstoque', id);
+      }
+
+      // Copa de cada evento: aberta -> fechada (contagem final) -> conferida (lançada no caixa).
+      // Depois de fechada, só patrão/tesoureiro mexem; só eles conferem.
+      match /copa/{id} {
+        function sessaoValida() {
+          return dataValida(novo().data) && novo().itens is list && novo().itens.size() <= 300
+            && novo().status in ['aberta', 'fechada', 'conferida'];
+        }
+        allow read: if equipeOuCopa(ent);
+        allow create: if grava(ent, ['admin', 'tesoureiro', 'copa']) && sessaoValida() && novo().status == 'aberta';
+        allow update: if grava(ent, ['admin', 'tesoureiro', 'copa']) && sessaoValida()
+          && (resource.data.status == 'aberta' || temPapel(ent, ['admin', 'tesoureiro']))
+          && (novo().status != 'conferida' || temPapel(ent, ['admin', 'tesoureiro']));
+        allow delete: if exclui(ent, ['admin', 'tesoureiro'], 'copa', id);
+      }
+
+      // ---------- Registro de atividades (somente acréscimo) ----------
+      match /auditoria/{id} {
+        allow read: if temPapel(ent, ['admin', 'consulta']);
+        allow create: if temPapel(ent, ['admin', 'tesoureiro', 'secretario', 'cultural', 'copa'])
+          && request.resource.data.keys().hasOnly(['acao', 'colecao', 'docId', 'resumo', 'uid', 'email', 'em'])
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.em == request.time
+          && texto(request.resource.data.resumo, 300)
+          && texto(request.resource.data.acao, 40);
+        allow update: if false;
+        allow delete: if superadmin();   // só quando a entidade inteira é excluída
       }
     }
   }

@@ -6,7 +6,7 @@ import { saldosAntesDe, CATEGORIA_TRANSFERENCIA } from '../lib/saldos';
 import { fmtMoeda, fmtData, fmtCompetencia, fmtCompetenciaCurta, hoje, somar, arred, MESES, idade, ultimoDiaMes, competenciaAtual } from '../lib/format';
 import { relatorioPdf } from '../lib/pdf';
 import { baixarCsv } from '../lib/csv';
-import { Abas, Cabecalho, Campo, Carregando, Vazio, mensagemErro } from '../components/ui';
+import { Abas, AvisoErro, Cabecalho, Campo, Carregando, Vazio } from '../components/ui';
 import Icone from '../components/Icone';
 
 export default function Relatorios() {
@@ -101,7 +101,7 @@ function Balancete() {
         </div>
         <div className="acoes" style={{ marginLeft: 'auto' }}>{r && <button type="button" className="btn btn-primario" onClick={pdf}><Icone nome="pdf" tam={18} />Baixar PDF</button>}</div>
       </div>
-      {erro ? <div className="painel-corpo"><div className="aviso erro">{mensagemErro(erro)}</div></div> : !r ? <Carregando /> : (
+      {erro ? <div className="painel-corpo"><AvisoErro erro={erro} /></div> : !r ? <Carregando /> : (
         <div className="painel-corpo">
           <div className="indicadores">
             <div className="indicador"><div className="rotulo">Saldo inicial</div><div className="valor">{fmtMoeda(r.saldoIni)}</div></div>
@@ -164,7 +164,7 @@ function Inadimplencia() {
     baixarCsv('inadimplencia', ['Sócio', 'Telefone', 'Meses em atraso', 'Competências', 'Total'], grupos.map((g) => [g.nome, g.telefone, g.itens.length, g.itens.map((m) => fmtCompetencia(m.competencia)).join(', '), g.total.toFixed(2).replace('.', ',')]));
   }
 
-  if (erro) return <div className="painel-corpo"><div className="aviso erro">{mensagemErro(erro)}</div></div>;
+  if (erro) return <div className="painel-corpo"><AvisoErro erro={erro} /></div>;
   if (!grupos) return <Carregando />;
   return (
     <>
@@ -219,7 +219,7 @@ function Arrecadacao() {
         <Campo rotulo="Ano"><input type="number" min="2000" max="2100" value={ano} onChange={(e) => setAno(Number(e.target.value) || ano)} /></Campo>
         <div className="acoes" style={{ marginLeft: 'auto' }}>{meses && <button type="button" className="btn btn-primario" onClick={pdf}><Icone nome="pdf" tam={18} />Baixar PDF</button>}</div>
       </div>
-      {erro ? <div className="painel-corpo"><div className="aviso erro">{mensagemErro(erro)}</div></div> : !meses ? <Carregando /> : (
+      {erro ? <div className="painel-corpo"><AvisoErro erro={erro} /></div> : !meses ? <Carregando /> : (
         <div className="tabela-wrap">
           <table>
             <thead><tr><th>Mês</th><th className="num">Pagas</th><th className="num">Previsto</th><th className="num">Recebido</th><th className="num">Em aberto</th><th style={{ width: '22%' }} className="esconder-mobile">Adimplência</th></tr></thead>
@@ -255,7 +255,7 @@ function Aniversariantes() {
         <Campo rotulo="Mês"><select value={mes} onChange={(e) => setMes(Number(e.target.value))}>{MESES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}</select></Campo>
         <div className="acoes" style={{ marginLeft: 'auto' }}>{lista?.length > 0 && <button type="button" className="btn btn-primario" onClick={pdf}><Icone nome="pdf" tam={18} />Baixar PDF</button>}</div>
       </div>
-      {erro ? <div className="painel-corpo"><div className="aviso erro">{mensagemErro(erro)}</div></div> : !lista ? <Carregando /> : !lista.length ? <Vazio titulo={`Nenhum aniversariante em ${MESES[mes - 1].toLowerCase()}`} /> : (
+      {erro ? <div className="painel-corpo"><AvisoErro erro={erro} /></div> : !lista ? <Carregando /> : !lista.length ? <Vazio titulo={`Nenhum aniversariante em ${MESES[mes - 1].toLowerCase()}`} /> : (
         <div className="tabela-wrap">
           <table>
             <thead><tr><th className="num">Dia</th><th>Nome</th><th className="esconder-mobile">Telefone</th></tr></thead>

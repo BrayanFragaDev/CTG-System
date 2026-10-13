@@ -7,6 +7,7 @@ import { configEntidade } from '../lib/constantes';
 
 const Ctx = createContext(null);
 const CHAVE_ENT = 'galpao.entidadeAtual';
+export const MINUTOS_INATIVIDADE = 30;
 
 function lerLocal() { try { return localStorage.getItem(CHAVE_ENT); } catch { return null; } }
 function gravarLocal(v) { try { localStorage.setItem(CHAVE_ENT, v); } catch { /* sem armazenamento */ } }
@@ -53,6 +54,23 @@ export function AuthProvider({ children }) {
       (s) => setEntidade(s.exists() ? { id: s.id, ...s.data() } : null),
       () => setEntidade(null));
   }, [entidadeId, perfil?.ativo]);
+
+  // Sai sozinho depois de 30 minutos sem uso (computador da secretaria, celular emprestado…)
+  useEffect(() => {
+    if (!user) return undefined;
+    let timer;
+    const reiniciar = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        try { sessionStorage.setItem('ctg.inatividade', '1'); } catch { /* sem armazenamento */ }
+        signOut(auth);
+      }, MINUTOS_INATIVIDADE * 60000);
+    };
+    const eventos = ['mousedown', 'keydown', 'touchstart', 'scroll', 'visibilitychange'];
+    eventos.forEach((e) => window.addEventListener(e, reiniciar, { passive: true }));
+    reiniciar();
+    return () => { clearTimeout(timer); eventos.forEach((e) => window.removeEventListener(e, reiniciar)); };
+  }, [user]);
 
   const valor = useMemo(() => {
     const papel = perfil?.ativo ? perfil.papel : null;

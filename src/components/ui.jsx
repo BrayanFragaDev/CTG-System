@@ -104,9 +104,29 @@ export function Carregando({ texto = 'Carregando…' }) {
   return <div className="carregando">{texto}</div>;
 }
 
-export function ErroLeitura({ erro }) {
+// Firestore pede um índice que ainda não foi publicado (ou está sendo criado)
+export const erroDeIndice = (err) => /requires an index|index is currently building|failed-precondition/i.test(`${err?.code || ''} ${err?.message || ''}`);
+const linkIndice = (err) => (String(err?.message || '').match(/https:\/\/console\.firebase\.google\.com\/\S+/) || [])[0];
+
+export function AvisoErro({ erro, prefixo }) {
   if (!erro) return null;
-  return <div className="aviso erro">Não foi possível carregar os dados: {mensagemErro(erro)}</div>;
+  if (erroDeIndice(erro)) {
+    const link = linkIndice(erro);
+    const construindo = /currently building/i.test(erro.message || '');
+    return (
+      <div className="aviso">
+        <strong>{construindo ? 'O banco de dados ainda está preparando esta consulta.' : 'Falta publicar um índice do banco de dados para esta consulta.'}</strong>{' '}
+        {construindo
+          ? 'Isso leva alguns minutos depois da publicação. Tente de novo em instantes.'
+          : <>Na pasta do sistema, rode <code>npm run deploy:regras</code> e aguarde alguns minutos{link ? <>, ou <a href={link} target="_blank" rel="noreferrer">crie o índice pelo console do Firebase</a></> : ''}.</>}
+      </div>
+    );
+  }
+  return <div className="aviso erro">{prefixo}{mensagemErro(erro)}</div>;
+}
+
+export function ErroLeitura({ erro }) {
+  return <AvisoErro erro={erro} prefixo="Não foi possível carregar os dados: " />;
 }
 
 export function Cabecalho({ titulo, descricao, children }) {
@@ -135,6 +155,7 @@ export function mensagemErro(err) {
     'auth/network-request-failed': 'sem conexão com a internet.',
     unavailable: 'sem conexão com o servidor. Verifique a internet.',
   };
+  if (erroDeIndice(err)) return 'falta publicar um índice do banco de dados (rode npm run deploy:regras e aguarde alguns minutos).';
   const m = mapa[c.replace('firestore/', '')] || err?.message || 'erro desconhecido.';
   return m.charAt(0).toUpperCase() + m.slice(1);
 }
@@ -193,5 +214,36 @@ export function SeletorMes({ valor, aoMudar, rotulo = 'Mês' }) {
     <Campo rotulo={rotulo}>
       <input type="month" value={valor} onChange={(e) => e.target.value && aoMudar(e.target.value)} />
     </Campo>
+  );
+}
+
+// Escolher imagem (brasão, foto). `preparar` reduz e comprime o arquivo.
+export function SeletorImagem({ rotulo, valor, aoMudar, preparar, redonda = false, ajuda, tamanho = 112, textoVazio = 'Sem imagem' }) {
+  const notificar = useNotificar();
+  const id = useId();
+  const [processando, setProcessando] = useState(false);
+  async function escolher(e) {
+    const arquivo = e.target.files?.[0];
+    e.target.value = '';
+    if (!arquivo) return;
+    setProcessando(true);
+    try { aoMudar(await preparar(arquivo)); } catch (err) { notificar(err.message || 'Não foi possível usar essa imagem.', 'erro'); }
+    finally { setProcessando(false); }
+  }
+  return (
+    <div className="campo seletor-imagem">
+      <span className="campo-rotulo">{rotulo}</span>
+      <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className={`miniatura ${redonda ? 'redonda' : ''}`} style={{ width: tamanho, height: tamanho }}>
+          {valor ? <img src={valor} alt={rotulo} /> : <span>{processando ? 'Preparando…' : textoVazio}</span>}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '.4rem', alignItems: 'flex-start' }}>
+          <label htmlFor={id} className="btn btn-peq" style={{ cursor: 'pointer' }}>{processando ? 'Preparando…' : valor ? 'Trocar imagem' : 'Escolher imagem'}</label>
+          <input id={id} type="file" accept="image/png,image/jpeg,image/webp" onChange={escolher} style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }} />
+          {valor && <button type="button" className="btn-link" onClick={() => aoMudar(null)}>Remover</button>}
+          {ajuda && <span className="ajuda">{ajuda}</span>}
+        </div>
+      </div>
+    </div>
   );
 }

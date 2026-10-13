@@ -7,9 +7,13 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "deploy": "vite build && firebase deploy"
+    "deploy": "vite build && firebase deploy",
+    "test:regras": "firebase emulators:exec --only firestore --project demo-ctg-inteligente \"node --test tests/\"",
+    "deploy:regras": "firebase deploy --only firestore:rules,firestore:indexes"
   },
   "dependencies": {
+    "@fontsource/bitter": "^5.3.0",
+    "@fontsource/public-sans": "^5.3.0",
     "firebase": "^13.0.0",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
@@ -18,6 +22,7 @@
     "react-router-dom": "^6.30.6"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^6.0.0",
     "@vitejs/plugin-react": "^6.1.2",
     "vite": "^8.3.4"
   }

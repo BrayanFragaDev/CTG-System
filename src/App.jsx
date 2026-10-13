@@ -20,11 +20,14 @@ import Usuarios from './pages/Usuarios';
 import Configuracoes from './pages/Configuracoes';
 import Entidades from './pages/Entidades';
 import Portal from './pages/Portal';
+import Avisos from './pages/Avisos';
+import Atividades from './pages/Atividades';
+import Estoque from './pages/Estoque';
 
 function Protegida({ modulo, children }) {
-  const { pode, superadmin } = useAuth();
+  const { pode, superadmin, papel } = useAuth();
   const ok = modulo === 'superadmin' ? superadmin : pode(modulo);
-  return ok ? children : <Navigate to="/" replace />;
+  return ok ? children : <Navigate to={papel === 'copa' ? '/estoque' : '/'} replace />;
 }
 
 export default function App() {
@@ -40,12 +43,15 @@ export default function App() {
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route index element={<Painel />} />
+        <Route index element={papel === 'copa' ? <Navigate to="/estoque" replace /> : <Painel />} />
+        <Route path="estoque" element={<Protegida modulo="estoque"><Estoque /></Protegida>} />
         <Route path="socios" element={<Protegida modulo="socios"><Socios /></Protegida>} />
         <Route path="mensalidades" element={<Protegida modulo="mensalidades"><Mensalidades /></Protegida>} />
         <Route path="contas" element={<Protegida modulo="contas"><Contas /></Protegida>} />
         <Route path="caixa" element={<Protegida modulo="caixa"><Caixa /></Protegida>} />
         <Route path="relatorios" element={<Protegida modulo="caixa"><Relatorios /></Protegida>} />
+        <Route path="avisos" element={<Protegida modulo="avisos"><Avisos /></Protegida>} />
+        <Route path="atividades" element={<Protegida modulo="auditoria"><Atividades /></Protegida>} />
         <Route path="eventos" element={<Protegida modulo="eventos"><Eventos /></Protegida>} />
         <Route path="invernadas" element={<Protegida modulo="invernadas"><Invernadas /></Protegida>} />
         <Route path="patrimonio" element={<Protegida modulo="patrimonio"><Patrimonio /></Protegida>} />
