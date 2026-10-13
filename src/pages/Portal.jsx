@@ -61,7 +61,8 @@ export default function Portal() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chaveAvisos, entidadeId, user]);
 
-  const lista = [...mens.dados].sort((a, b) => b.competencia.localeCompare(a.competencia));
+  // mensalidades canceladas (isenções concedidas) não aparecem para o sócio
+  const lista = mens.dados.filter((m) => m.status !== 'cancelado').sort((a, b) => b.competencia.localeCompare(a.competencia));
   const abertas = lista.filter((m) => m.status === 'aberto');
   const atrasadas = abertas.filter((m) => m.vencimento < hoje());
   const pagas = lista.filter((m) => m.status === 'pago');
@@ -85,7 +86,7 @@ export default function Portal() {
       <header className="topo-portal">
         {entidade?.logo ? <img src={entidade.logo} alt={`Brasão de ${entidade.nome}`} className="brasao-lateral" style={{ width: 36, height: 36 }} /> : <Marca tam={32} />}
         <strong style={{ flex: 1 }}>{entidade?.nome || 'Portal do sócio'}</strong>
-        {novos > 0 && <a href="#avisos" className="sino" aria-label={`${novos} aviso(s) novo(s)`}>{novos} {novos === 1 ? 'aviso novo' : 'avisos novos'}</a>}
+        {novos > 0 && <a href="#avisos" className="sino" aria-label={`${novos} aviso(s) novo(s)`}>{novos}<span className="sino-texto"> {novos === 1 ? 'aviso novo' : 'avisos novos'}</span></a>}
         <button type="button" onClick={sair}>Sair</button>
       </header>
       <main className="conteudo" style={{ maxWidth: 1040, margin: '0 auto' }}>
@@ -124,34 +125,36 @@ export default function Portal() {
         </div>
 
         {abertas.length > 0 && config.chavePix && (
-          <div className="aviso info" style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ flex: 1 }}>Você tem <strong>{fmtMoeda(somar(abertas))}</strong> em aberto. Pague por PIX para a chave <strong>{config.chavePix}</strong> e envie o comprovante à tesouraria.</span>
-            <button type="button" className="btn btn-peq" onClick={copiarPix}>Copiar chave</button>
+          <div className="aviso info pix-aviso">
+            <p>Você tem <strong>{fmtMoeda(somar(abertas))}</strong> em aberto. Pague por PIX e envie o comprovante à tesouraria.</p>
+            <div className="pix-chave">
+              <span><span className="sub">Chave PIX</span><strong>{config.chavePix}</strong></span>
+              <button type="button" className="btn btn-peq" onClick={copiarPix}>Copiar chave</button>
+            </div>
           </div>
         )}
 
         <section className="painel">
           <div className="painel-titulo"><h2>Minhas mensalidades</h2><span className="sub">{pagas.length} paga(s){abertas.length ? `, ${abertas.length} em aberto` : ''}</span></div>
           {mens.carregando ? <Carregando /> : !lista.length ? <div className="painel-corpo"><p className="sub">Nenhuma mensalidade lançada.</p></div> : (
-            <div className="tabela-wrap">
-              <table>
-                <thead><tr><th>Mês</th><th className="esconder-mobile">Vencimento</th><th className="num">Valor</th><th>Situação</th><th /></tr></thead>
-                <tbody>
-                  {lista.map((m) => {
-                    const st = statusMensalidade(m);
-                    return (
-                      <tr key={m.id}>
-                        <td>{fmtCompetencia(m.competencia)}</td>
-                        <td className="esconder-mobile">{fmtData(m.vencimento)}</td>
-                        <td className="num">{fmtMoeda(m.valorPago ?? m.valor)}</td>
-                        <td><Selo tipo={st.tipo}>{st.texto}</Selo></td>
-                        <td className="acoes-celula">{m.status === 'pago' && <button type="button" className="btn btn-peq" onClick={() => reciboMensalidades(entidade, socio, [m])}>Recibo</button>}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <ul className="lista-mensalidades">
+              {lista.map((m) => {
+                const st = statusMensalidade(m);
+                return (
+                  <li key={m.id}>
+                    <div className="lm-mes">
+                      <strong>{fmtCompetencia(m.competencia)}</strong>
+                      <span className="sub">{m.status === 'pago' ? `Paga em ${fmtData(m.dataPagamento)}` : `Vence em ${fmtData(m.vencimento)}`}</span>
+                    </div>
+                    <div className="lm-valor">
+                      <strong className="num">{fmtMoeda(m.valorPago ?? m.valor)}</strong>
+                      <Selo tipo={st.tipo}>{st.texto}</Selo>
+                    </div>
+                    {m.status === 'pago' && <button type="button" className="btn btn-peq lm-recibo" onClick={() => reciboMensalidades(entidade, socio, [m])}>Recibo</button>}
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </section>
         <div className="espaco" />

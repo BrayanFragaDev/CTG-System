@@ -425,6 +425,40 @@ details.mensagem-enviada .previa-balao { margin: .6rem 0 0; border: 1px solid va
   .tabela-contagem tfoot td:empty { display: none; }
 }
 
-/* textos longos (links, e-mails, mensagens de erro) quebram linha em vez de alargar a página */
-.aviso, .modal-corpo, td, .lista-simples li, .ficha dd { overflow-wrap: anywhere; }
+/* textos longos (links, e-mails, mensagens de erro) quebram linha em vez de alargar a página.
+   break-word só quebra uma palavra que não cabe sozinha na linha; nunca dentro de tabelas,
+   onde "anywhere" encolhia as colunas e partia as palavras letra por letra. */
+.aviso, .modal-corpo, .lista-simples li, .ficha dd { overflow-wrap: break-word; }
 .conteudo { overflow-x: clip; }
+
+/* ===== Portal do sócio: celular ===== */
+.lista-mensalidades { list-style: none; margin: 0; padding: 0; }
+.lista-mensalidades li { display: flex; align-items: center; gap: 1rem; padding: .85rem 1.25rem; border-bottom: 1px solid #E6EAE5; }
+.lista-mensalidades li:last-child { border-bottom: none; }
+.lm-mes { flex: 1; min-width: 0; }
+.lm-mes strong { display: block; }
+.lm-valor { display: flex; flex-direction: column; align-items: flex-end; gap: .3rem; white-space: nowrap; }
+.lm-recibo { flex: none; }
+.pix-aviso p { margin: 0 0 .7rem; }
+.pix-chave { display: flex; gap: .75rem; align-items: center; justify-content: space-between; flex-wrap: wrap; background: rgba(255,255,255,.6); border-radius: var(--raio); padding: .55rem .75rem; }
+.pix-chave > span { min-width: 0; flex: 1 1 200px; }
+.pix-chave strong { display: block; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.carteirinha-topo { flex-wrap: wrap; row-gap: .2rem; }
+@media (max-width: 640px) {
+  .topo-portal strong { font-size: 1rem; }
+  .sino-texto { display: none; }
+  .sino { padding: .25rem .6rem; }
+  .lista-mensalidades li { padding: .8rem 1rem; gap: .75rem; flex-wrap: wrap; }
+  .lm-recibo { margin-left: auto; }
+  .carteirinha-costura { padding: 1rem; }
+  .carteirinha-topo span:last-child { display: none; }
+  .carteirinha-meio { align-items: center; }
+  .carteirinha-foto { width: 68px; height: 68px; }
+  .carteirinha-nome { font-size: 1.3rem; }
+  .carteirinha-dados { gap: .5rem 1.1rem; }
+  .avisos-portal .painel-titulo, .portal-topo + * .painel-titulo { flex-wrap: wrap; }
+  .feed button { padding: .8rem 1rem; }
+  .feed-texto { padding: 0 1rem 1rem 1rem; }
+  .painel-titulo { padding: .9rem 1rem; }
+  .painel-corpo { padding: 1rem; }
+}
